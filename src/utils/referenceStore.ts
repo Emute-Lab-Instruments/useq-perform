@@ -9,6 +9,18 @@ export interface Parameter {
   range?: string;
 }
 
+export interface NamespaceApplicability {
+  namespace: string;
+  spelling: string;
+  identity: string;
+}
+
+export interface NamespaceDefinition {
+  name: string;
+  longName?: string;
+  semantics: string;
+}
+
 export interface ReferenceEntry {
   name: string;
   description: string;
@@ -16,6 +28,8 @@ export interface ReferenceEntry {
   tags: string[];
   parameters: Parameter[];
   examples: string[];
+  bareIdentity: string | null;
+  namespaceApplicability: NamespaceApplicability[];
   meta: {
     introduced: Version | null;
     changed: Version | null;
@@ -29,6 +43,7 @@ const loadSet = (key: string) => {
 
 export const [referenceStore, setReferenceStore] = createStore({
   data: [] as ReferenceEntry[],
+  namespaces: [] as NamespaceDefinition[],
   starred: loadSet(PERSISTENCE_KEYS.referenceStarred),
   expanded: loadSet(PERSISTENCE_KEYS.referenceExpanded),
   targetVersion: loadRaw(PERSISTENCE_KEYS.referenceVersion) as string | null,
@@ -107,17 +122,18 @@ export function ensureReferenceDataLoaded(): Promise<void> {
 
   _loadPromise = (async () => {
     try {
-      const { loadReferenceDataFromCandidates, normalizeEntry } = await import(
+      const { loadReferenceDocumentFromCandidates, normalizeEntry } = await import(
         "../lib/referenceDataLoader.ts"
       );
-      const raw = await loadReferenceDataFromCandidates();
-      const normalized = raw
+      const document = await loadReferenceDocumentFromCandidates();
+      const normalized = document.operators
         .map(normalizeEntry)
         .filter(
           (entry): entry is NonNullable<ReturnType<typeof normalizeEntry>> =>
             Boolean(entry),
         );
       setReferenceStore("data", normalized);
+      setReferenceStore("namespaces", document.namespaces);
     } catch (err) {
       setReferenceStore(
         "error",

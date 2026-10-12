@@ -1,3 +1,4 @@
+import assert from "node:assert/strict";
 /**
  * Wrapper recognition tests (§6.2, live-edit.md §2.2).
  *
@@ -8,7 +9,7 @@
 
 import { describe, expect, it } from "vitest";
 import { EditorState } from "@codemirror/state";
-// @ts-expect-error — clojure-mode has no type declarations
+
 import { default_extensions } from "@nextjournal/clojure-mode";
 
 import { treeFromLezer } from "../treeFromLezer.ts";
@@ -48,7 +49,8 @@ describe("wrapper recognition — valid live-edit patterns", () => {
     expect(tree.root.children).toHaveLength(1);
 
     const node = tree.root.children[0]!;
-    expect(node.kind).toBe("number");
+    assert(node.kind !== "document");
+    assert(node.kind === "number");
     const numNode = node as NumberNode;
     expect(numNode.text).toBe("0.5");
   });
@@ -56,10 +58,11 @@ describe("wrapper recognition — valid live-edit patterns", () => {
   it("Meta payload contains the parsed keyword args", () => {
     const { tree } = parse('(live-edit 0.5 :id "abc" :min 0 :max 1)');
     const node = tree.root.children[0]!;
+    assert(node.kind !== "document");
     expect(node.metas).toHaveLength(1);
 
     const meta = node.metas[0]!;
-    expect(meta.kind).toBe("live-edit");
+    assert(meta.kind === "live-edit");
     const payload = meta.payload as LiveEditMetaPayload;
     expect(payload.id).toBe("abc");
     expect(payload.min).toBe(0);
@@ -70,6 +73,7 @@ describe("wrapper recognition — valid live-edit patterns", () => {
     const source = '(live-edit 0.5 :id "abc" :min 0 :max 1)';
     const { tree, idIndex } = parse(source);
     const node = tree.root.children[0]!;
+    assert(node.kind !== "document");
     const range = idIndex.get(node.id);
     expect(range).toBeDefined();
     expect(range!.from).toBe(0);
@@ -80,11 +84,12 @@ describe("wrapper recognition — valid live-edit patterns", () => {
     const { tree, warnings } = parse('(live-edit true :id "x")');
     expect(warnings).toHaveLength(0);
     const node = tree.root.children[0]!;
+    assert(node.kind !== "document");
     // `true` is a symbol in ModuLisp/clojure-mode
-    expect(node.kind).toBe("symbol");
+    assert(node.kind === "symbol");
     expect((node as SymbolNode).text).toBe("true");
     expect(node.metas).toHaveLength(1);
-    expect(node.metas[0]!.kind).toBe("live-edit");
+    assert(node.metas[0]!.kind === "live-edit");
     expect((node.metas[0]!.payload as LiveEditMetaPayload).id).toBe("x");
   });
 
@@ -92,7 +97,8 @@ describe("wrapper recognition — valid live-edit patterns", () => {
     const { tree, warnings } = parse('(live-edit :up :id "y" :options [:up :down])');
     expect(warnings).toHaveLength(0);
     const node = tree.root.children[0]!;
-    expect(node.kind).toBe("keyword");
+    assert(node.kind !== "document");
+    assert(node.kind === "keyword");
     expect((node as KeywordNode).text).toBe(":up");
     expect(node.metas).toHaveLength(1);
     const payload = node.metas[0]!.payload as LiveEditMetaPayload;
@@ -105,7 +111,9 @@ describe("wrapper recognition — valid live-edit patterns", () => {
       '(live-edit 42 :id "x" :min 0 :max 100 :name "volume" :step 1 :precision 2 :options [:a :b])';
     const { tree, warnings } = parse(source);
     expect(warnings).toHaveLength(0);
-    const payload = tree.root.children[0]!.metas[0]!.payload as LiveEditMetaPayload;
+    const node = tree.root.children[0]!;
+    assert(node.kind !== "document");
+    const payload = node.metas[0]!.payload as LiveEditMetaPayload;
     expect(payload.id).toBe("x");
     expect(payload.min).toBe(0);
     expect(payload.max).toBe(100);
@@ -119,7 +127,8 @@ describe("wrapper recognition — valid live-edit patterns", () => {
     const { tree, warnings } = parse("(live-edit 0.5)");
     expect(warnings).toHaveLength(0);
     const node = tree.root.children[0]!;
-    expect(node.kind).toBe("number");
+    assert(node.kind !== "document");
+    assert(node.kind === "number");
     expect(node.metas).toHaveLength(1);
     const payload = node.metas[0]!.payload as LiveEditMetaPayload;
     // All payload fields are undefined
@@ -131,13 +140,14 @@ describe("wrapper recognition — valid live-edit patterns", () => {
     const { tree, warnings } = parse('(foo (live-edit 1 :id "a"))');
     expect(warnings).toHaveLength(0);
     const outer = tree.root.children[0]!;
-    expect(outer.kind).toBe("list");
+    assert(outer.kind !== "document");
+    assert(outer.kind === "list");
     if (outer.kind !== "list") throw new Error();
     expect(outer.children).toHaveLength(2);
-    expect(outer.children[0]!.kind).toBe("symbol");
-    expect(outer.children[1]!.kind).toBe("number");
+    assert(outer.children[0]!.kind === "symbol");
+    assert(outer.children[1]!.kind === "number");
     expect(outer.children[1]!.metas).toHaveLength(1);
-    expect(outer.children[1]!.metas[0]!.kind).toBe("live-edit");
+    assert(outer.children[1]!.metas[0]!.kind === "live-edit");
   });
 });
 
@@ -152,7 +162,7 @@ describe("wrapper recognition — malformed patterns", () => {
     expect(warnings[0]!.message).toContain("Malformed live-edit wrapper");
     expect(warnings[0]!.message).toContain("no host node");
     // Falls back to a normal list
-    expect(tree.root.children[0]!.kind).toBe("list");
+    assert(tree.root.children[0]!.kind === "list");
   });
 
   it("warning includes correct source range", () => {
@@ -172,14 +182,15 @@ describe("wrapper recognition — non-wrapper lists are unaffected", () => {
     const { tree, warnings } = parse("(foo bar baz)");
     expect(warnings).toHaveLength(0);
     const node = tree.root.children[0]!;
-    expect(node.kind).toBe("list");
+    assert(node.kind !== "document");
+    assert(node.kind === "list");
     expect(node.metas).toHaveLength(0);
   });
 
   it("(a live-edit b) — live-edit in non-head position is not a wrapper", () => {
     const { tree, warnings } = parse("(a live-edit b)");
     expect(warnings).toHaveLength(0);
-    expect(tree.root.children[0]!.kind).toBe("list");
+    assert(tree.root.children[0]!.kind === "list");
     expect(tree.root.children[0]!.metas).toHaveLength(0);
   });
 });
@@ -273,6 +284,7 @@ describe("live-edit meta preservation through structural ops", () => {
     const r = m.raise(stateOn(root, tagged.id));
     const top = r.state.tree.root.children[0]!;
     expect(top.id).toBe(tagged.id);
+    assert(top.kind !== "document");
     expect(top.metas).toEqual([LIVE_EDIT_META]);
   });
 
@@ -287,6 +299,8 @@ describe("live-edit meta preservation through structural ops", () => {
     if (!newOuter || newOuter.kind !== "list") throw new Error();
     // Order is now [y, tagged]; tagged keeps its meta
     expect(newOuter.children[1]!.id).toBe(tagged.id);
-    expect(newOuter.children[1]!.metas).toEqual([LIVE_EDIT_META]);
+    const moved = newOuter.children[1]!;
+    assert(moved.kind !== "document");
+    expect(moved.metas).toEqual([LIVE_EDIT_META]);
   });
 });

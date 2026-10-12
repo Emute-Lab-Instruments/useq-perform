@@ -41,7 +41,7 @@ tabs:
         icon: "~"
         items:
           - { kind: function, id: fn.sine,    label: sine,    head: sine,    signature: [{name: freq, type: number}] }
-          - { kind: function, id: fn.usin,    label: usin,    head: usin,    signature: [{name: phasor, type: expr}] }
+          - { kind: function, id: fn.sin,     label: sin,     head: sin,     signature: [{name: phasor, type: expr}] }
           - { kind: function, id: fn.sqr,     label: sqr,     head: sqr,     signature: [{name: phasor, type: expr}] }
           - { kind: function, id: fn.tri,     label: tri,     head: tri,     signature: [{name: duty, type: number}, {name: phasor, type: expr}] }
           - { kind: function, id: fn.pulse,   label: pulse,   head: pulse,   signature: [{name: width, type: number}] }

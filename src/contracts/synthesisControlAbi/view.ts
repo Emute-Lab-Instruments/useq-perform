@@ -62,7 +62,6 @@ export interface SynthesisControlView {
   wakeSequence: bigint;
   programEpoch: number;
   pendingEpoch: number;
-  controlRevision: number;
   ringWriteIndex: number;
   ringReadIndex: number;
   producerLivenessBlock: number;
@@ -115,6 +114,9 @@ export interface SynthesisControlView {
 
   /** Advance the consumer's read index after consuming a block. */
   advanceReadIndex(): void;
+
+  /** Drop currently queued blocks without racing a concurrent consumer. */
+  discardQueuedBlocks(): void;
 
   /** Number of blocks the consumer may read (acquired). */
   consumerAvailableBlocks(): number;
@@ -287,13 +289,6 @@ export function attachSynthesisControlView(
       requireActivationEpoch(value);
       dv.setUint32(HEADER_OFFSETS.pendingEpoch, value, true);
     },
-    get controlRevision(): number {
-      return dv.getUint32(HEADER_OFFSETS.controlRevision, true);
-    },
-    set controlRevision(value: number) {
-      dv.setUint32(HEADER_OFFSETS.controlRevision, value, true);
-    },
-
     // Ring indices — Atomics-aware so the publication helpers carry the
     // release/acquire fences even in single-threaded tests.
     get ringWriteIndex(): number {
@@ -530,11 +525,6 @@ export function attachSynthesisControlView(
       const next =
         (Atomics.load(i32, HEADER_OFFSETS.ringWriteIndex / 4) + 1) >>> 0;
       Atomics.store(i32, HEADER_OFFSETS.ringWriteIndex / 4, next);
-      // Bump the producer liveness age. The consumer resets it via
-      // {@link advanceReadIndex}. When this exceeds `ringCapacityBlocks` the
-      // ring is overrunning (the producer has lapped the consumer).
-      const age = dv.getUint32(HEADER_OFFSETS.producerLivenessAge, true) + 1;
-      dv.setUint32(HEADER_OFFSETS.producerLivenessAge, age, true);
     },
     acquireWriteIndex(): number {
       return Atomics.load(i32, HEADER_OFFSETS.ringWriteIndex / 4);
@@ -545,6 +535,17 @@ export function attachSynthesisControlView(
       Atomics.store(i32, HEADER_OFFSETS.ringReadIndex / 4, next);
       // The consumer has drained one slot; reset the overrun age.
       dv.setUint32(HEADER_OFFSETS.producerLivenessAge, 0, true);
+    },
+    discardQueuedBlocks(): void {
+      const readOffset = HEADER_OFFSETS.ringReadIndex / 4;
+      const write = Atomics.load(i32, HEADER_OFFSETS.ringWriteIndex / 4);
+      for (;;) {
+        const read = Atomics.load(i32, readOffset);
+        // Sequence numbers are monotonic modulo 2^32. Keep a consumer
+        // index already in the forward half-range of the observed write.
+        if (((read - write) >>> 0) < 0x80000000) return;
+        if (Atomics.compareExchange(i32, readOffset, read, write) === read) return;
+      }
     },
     consumerAvailableBlocks(): number {
       const write = Atomics.load(i32, HEADER_OFFSETS.ringWriteIndex / 4);
@@ -564,7 +565,9 @@ export function attachSynthesisControlView(
     isRingOverrun(): boolean {
       // Overrun is declared when the producer has published more blocks than
       // the ring can hold without the consumer draining any.
-      return view.producerLivenessAge > ringCapacityBlocks;
+      const write = Atomics.load(i32, HEADER_OFFSETS.ringWriteIndex / 4);
+      const read = Atomics.load(i32, HEADER_OFFSETS.ringReadIndex / 4);
+      return ((write - read) >>> 0) > ringCapacityBlocks;
     },
     physicalSlotForSequence(sequence): number {
       if (!Number.isInteger(sequence) || sequence < 0) {

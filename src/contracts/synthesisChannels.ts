@@ -77,7 +77,7 @@ export const ENGINE_STATE_REASONS = Object.freeze({
   WORKLET_CONTROL_ATTACH_FAILED:
     "The audio worklet rejected the control buffer. Reload to refresh the worklet bundle.",
   WORKLET_TRAP:
-    "The audio worklet reported a trap. Output has been faded to silence.",
+    "A NodeDef trapped during compute. That node was silenced; sibling nodes continue and the failed node retries.",
   OVERLOAD:
     "The audio thread missed its deadline repeatedly. Output has been faded to silence.",
   RECOVERY_FAILED:
@@ -271,32 +271,6 @@ export function engineTransitionTrigger(
   const row = ENGINE_TRANSITIONS[from] as Record<string, EngineTransitionTrigger>;
   return row[to] ?? null;
 }
-
-// ---------------------------------------------------------------------------
-// Lifecycle event channel — recovery/telemetry audit trail
-// ---------------------------------------------------------------------------
-
-/**
- * Lifecycle event published on every transition in addition to the
- * snapshot. Useful for telemetry dashboards that want a flat audit trail
- * rather than a Solid store subscription.
- */
-export interface EngineLifecycleEvent {
-  /** Transition counter at the time of the event. */
-  readonly transitionCount: number;
-  /** Source state. */
-  readonly from: SynthesisEngineState;
-  /** Destination state. */
-  readonly to: SynthesisEngineState;
-  /** Trigger key that caused the transition. */
-  readonly trigger: EngineTransitionTrigger;
-  /** Wall-clock millis (`Date.now()`) of the transition. */
-  readonly at: number;
-}
-
-export const ENGINE_LIFECYCLE_EVENT = "useq-engine-lifecycle";
-export const engineLifecycle: TypedChannel<EngineLifecycleEvent> =
-  createChannel<EngineLifecycleEvent>();
 
 // ---------------------------------------------------------------------------
 // Re-export

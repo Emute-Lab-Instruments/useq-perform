@@ -1,3 +1,6 @@
+import { commitGraph } from "./testing/commitGraph";
+import { createProducerScheduler } from "./producerScheduler";
+import { createTransportFrameMap } from "./transportFrameMap";
 /**
  * Multi-node worklet host tests (synthesis epic M2.1, ergo 9a9370af;
  * quantum-growth fix, ergo 10271a1d).
@@ -249,6 +252,7 @@ interface GraphHarness {
   /** Push a block and process one quantum. */
   step(epoch: number, channels?: readonly number[], frames?: number): void;
   diagnostics(): Array<Extract<WorkletOutboundEvent, { type: "graph-diagnostic" }>>;
+  engineFaults(): Array<Extract<WorkletOutboundEvent, { type: "engine-fault" }>>;
 }
 
 function buildGraphHarness(opts: {
@@ -256,6 +260,7 @@ function buildGraphHarness(opts: {
   arena: ArrayBuffer;
   limitBytes?: number;
   renderQuantumFrames?: number;
+  now?: () => number;
   /** Shared compute-call recorder (the same array the adapters push into). */
   callOrder?: string[];
 }): GraphHarness {
@@ -292,6 +297,7 @@ function buildGraphHarness(opts: {
     sampleRate: DEFAULT_WORKLET_SAMPLE_RATE,
     renderQuantumFrames: opts.renderQuantumFrames ?? DEFAULT_RENDER_QUANTUM_FRAMES,
     publish: (e) => events.push(e),
+    now: opts.now,
     createArenaView: (byteOffset, lengthDoubles) =>
       new Float64Array(arena, byteOffset, lengthDoubles),
     createArenaByteView: (byteOffset, lengthBytes) =>
@@ -335,23 +341,27 @@ function buildGraphHarness(opts: {
         (e): e is Extract<WorkletOutboundEvent, { type: "graph-diagnostic" }> =>
           "type" in e && e.type === "graph-diagnostic",
       ),
+    engineFaults: () =>
+      events.filter(
+        (e): e is Extract<WorkletOutboundEvent, { type: "engine-fault" }> =>
+          "type" in e && e.type === "engine-fault",
+      ),
   };
 }
 
-function instantiate(
-  core: WorkletCore,
+function instance(
   identity: string,
   def: string,
   epoch: number,
   extra?: Record<string, unknown>,
 ) {
-  core.handleMessage({
-    type: "instantiate",
+  return {
+    type: "instantiate" as const,
     identity: { identity, def, version: 1, epoch },
     statePointer: 0,
     stateBytes: 0,
     ...extra,
-  });
+  };
 }
 
 // ---------------------------------------------------------------------------
@@ -359,6 +369,114 @@ function instantiate(
 // ---------------------------------------------------------------------------
 
 describe("workletCore graph — multiple live instances (synthesis.md §3.1)", () => {
+  it("carries producer samples through the SAB into worklet rendering", () => {
+    const arena = new ArrayBuffer(1024 * 1024);
+    const descriptor = Object.freeze({
+      ...makeDescriptor("src/producer-rate", 0),
+      params: Object.freeze([
+        Object.freeze({ name: "cutoff", default: 0, min: 0, max: 100, rate: "fast" as const, smoothing: "linear" as const }),
+      ]),
+    });
+    const observed: number[] = [];
+    const base = createConstAdapter(arena, "src/producer-rate", 0, []);
+    const adapter: FakeGraphAdapter = {
+      ...base,
+      descriptor,
+      params: buildNodeDefParamTable(descriptor),
+      computeWithParams(_statePtr, params, outputPtr, frameCount) {
+        observed.push(params[0]!.value);
+        new Float64Array(arena, outputPtr, frameCount).fill(params[0]!.value);
+        return true;
+      },
+    };
+    const h = buildGraphHarness({ adapters: { "src/producer-rate": adapter }, arena });
+    commitGraph(h.core, [instance("producer-rate", "src/producer-rate", 1, {
+      controlChannels: [
+        { param: "cutoff", channel: 0, rate: "fast", smoothing: "linear" },
+      ],
+    })]);
+    const map = createTransportFrameMap({ sampleRate: 48000 });
+    map.start({ atFrame: 0n, atTime: 0 });
+    const producer = createProducerScheduler({
+      clock: { now: () => 0, sleep: () => undefined },
+      executor: {
+        liveTick: () => ({}),
+        sampleSynthControls(indices, times) {
+          return new Float64Array(indices.length * times.length).map((_, index) =>
+            (index % times.length) * 10,
+          );
+        },
+      },
+      view: h.view,
+      map,
+      blockRateChannels: [],
+      fastRateBindings: [{ channelKey: "producer-rate\0cutoff", compilerControlIndex: 0 }],
+    });
+    producer.start();
+    h.view.pendingEpoch = 1;
+    h.view.publishAudioFrame({ frame: 1n, blockFrameOffset: 1 });
+    expect(producer.iterate()).toBeGreaterThan(0);
+    h.core.process(DEFAULT_RENDER_QUANTUM_FRAMES);
+    expect(observed).toHaveLength(DEFAULT_RENDER_QUANTUM_FRAMES);
+    expect(observed[0]).toBeCloseTo(0);
+    expect(observed[127]).toBeCloseTo(70);
+    producer.stop();
+  });
+
+  it("interpolates fast controls and applies latch edges at their frame", () => {
+    const arena = new ArrayBuffer(1024 * 1024);
+    const descriptor = Object.freeze({
+      ...makeDescriptor("src/rate-test", 0),
+      params: Object.freeze([
+        Object.freeze({ name: "cutoff", default: 0, min: 0, max: 100, rate: "fast" as const, smoothing: "linear" as const }),
+        Object.freeze({ name: "gate", default: 0, min: 0, max: 1, rate: "block" as const, smoothing: "latch" as const }),
+      ]),
+    });
+    const observedCutoff: number[] = [];
+    const observedGate: number[] = [];
+    const base = createConstAdapter(arena, "src/rate-test", 0, []);
+    const adapter: FakeGraphAdapter = {
+      ...base,
+      descriptor,
+      params: buildNodeDefParamTable(descriptor),
+      computeWithParams(_statePtr, params, outputPtr, frameCount) {
+        observedCutoff.push(params[0]!.value);
+        observedGate.push(params[1]!.value);
+        new Float64Array(arena, outputPtr, frameCount).fill(params[0]!.value);
+        return true;
+      },
+    };
+    const h = buildGraphHarness({ adapters: { "src/rate-test": adapter }, arena });
+    commitGraph(h.core, [instance("rate", "src/rate-test", 1, {
+      controlChannels: [
+        { param: "cutoff", channel: 0, rate: "fast", smoothing: "linear" },
+        { param: "gate", channel: 0, rate: "event", smoothing: "latch" },
+      ],
+    })]);
+    for (let block = 0; block < FADE_IN_BLOCKS + 1; block += 1) {
+      const slot = h.view.physicalSlotForSequence(h.view.ringWriteIndex);
+      h.view.writeBlockEpoch(slot, 1);
+      h.view.writeBlockRevision(slot, 1);
+      for (let point = 0; point < h.view.fastPointsPerBlock; point += 1) {
+        h.view.writeFastRateValue(slot, 0, point, point * 10);
+      }
+      h.view.writeEvent(slot, 0, 0, { value: 1, frameOffset: 17 });
+      h.view.writeEvent(slot, 0, 1, { value: 0, frameOffset: 50 });
+      h.view.setEventCount(slot, 0, 2);
+      h.view.advanceWriteIndex();
+      h.core.process(DEFAULT_RENDER_QUANTUM_FRAMES);
+    }
+    const start = observedCutoff.length - DEFAULT_RENDER_QUANTUM_FRAMES;
+    const lastCutoff = observedCutoff.slice(start);
+    const lastGate = observedGate.slice(start);
+    expect(lastCutoff[0]).toBeCloseTo(0);
+    expect(lastCutoff[127]).toBeCloseTo(70);
+    expect(lastGate[16]).toBe(0);
+    expect(lastGate[17]).toBe(1);
+    expect(lastGate[49]).toBe(1);
+    expect(lastGate[50]).toBe(0);
+  });
+
   it("renders two independent nodes and sums them into the output", () => {
     const arena = new ArrayBuffer(1024 * 1024);
     const callOrder: string[] = [];
@@ -370,8 +488,10 @@ describe("workletCore graph — multiple live instances (synthesis.md §3.1)", (
       arena,
       callOrder,
     });
-    instantiate(h.core, "id-a", "src/a", 1);
-    instantiate(h.core, "id-b", "src/b", 1);
+    commitGraph(h.core, [
+      instance("id-a", "src/a", 1),
+      instance("id-b", "src/b", 1)
+    ]);
     for (let i = 0; i < FADE_IN_BLOCKS + 2; i++) h.step(1);
 
     const out = h.core.readOutput();
@@ -391,8 +511,10 @@ describe("workletCore graph — multiple live instances (synthesis.md §3.1)", (
       arena,
       callOrder,
     });
-    instantiate(h.core, "id-a", "src/a", 3);
-    instantiate(h.core, "id-b", "src/b", 3);
+    commitGraph(h.core, [
+      instance("id-a", "src/a", 3),
+      instance("id-b", "src/b", 3)
+    ]);
 
     // A mismatched-epoch block must NOT activate or render either node.
     h.step(7);
@@ -420,10 +542,12 @@ describe("workletCore graph — multiple live instances (synthesis.md §3.1)", (
       arena,
       callOrder,
     });
-    instantiate(h.core, "one", "src/one", 1);
-    instantiate(h.core, "tiny-a", "src/tiny-a", 1);
-    instantiate(h.core, "tiny-b", "src/tiny-b", 1);
-    instantiate(h.core, "tiny-c", "src/tiny-c", 1);
+    commitGraph(h.core, [
+      instance("one", "src/one", 1),
+      instance("tiny-a", "src/tiny-a", 1),
+      instance("tiny-b", "src/tiny-b", 1),
+      instance("tiny-c", "src/tiny-c", 1)
+    ]);
     for (let i = 0; i < FADE_IN_BLOCKS + 2; i++) h.step(1);
 
     const expected = Math.fround(1 + 3 * tiny);
@@ -450,10 +574,12 @@ describe("workletCore graph — topological execution and port wiring", () => {
     });
     // Downstream (B consumes A) instantiated FIRST — topological order
     // must still run A before B.
-    instantiate(h.core, "id-b", "fx/gain", 1, {
+    commitGraph(h.core, [
+      instance("id-b", "fx/gain", 1, {
       audioInputs: [{ port: 0, sourceIdentity: "id-a", sourcePort: 0 }],
-    });
-    instantiate(h.core, "id-a", "src/a", 1);
+    }),
+      instance("id-a", "src/a", 1)
+    ]);
     h.step(1);
 
     expect(h.callOrder).toEqual(["src/a", "fx/gain"]);
@@ -469,10 +595,12 @@ describe("workletCore graph — topological execution and port wiring", () => {
       arena,
       callOrder,
     });
-    instantiate(h.core, "id-a", "src/a", 1);
-    instantiate(h.core, "id-b", "fx/gain", 1, {
+    commitGraph(h.core, [
+      instance("id-a", "src/a", 1),
+      instance("id-b", "fx/gain", 1, {
       audioInputs: [{ port: 0, sourceIdentity: "id-a", sourcePort: 0 }],
-    });
+    })
+    ]);
     for (let i = 0; i < FADE_IN_BLOCKS + 2; i++) h.step(1);
 
     // Pointer wiring: the gain node's input pointer IS the const node's
@@ -499,23 +627,54 @@ describe("workletCore graph — topological execution and port wiring", () => {
       arena,
       callOrder,
     });
-    instantiate(h.core, "id-a", "src/echo-a", 1, {
+    commitGraph(h.core, [
+      instance("id-a", "src/echo-a", 1, {
       controlChannels: [
         { param: "freq", channel: 0 },
         { param: "amp", channel: 1 },
       ],
-    });
-    instantiate(h.core, "id-b", "src/echo-b", 1, {
+    }),
+      instance("id-b", "src/echo-b", 1, {
       controlChannels: [
         { param: "freq", channel: 2 },
         { param: "amp", channel: 3 },
       ],
-    });
+    })
+    ]);
     // Channels: node A freq=100 amp=1, node B freq=200 amp=1.
     for (let i = 0; i < FADE_IN_BLOCKS + 2; i++) h.step(1, [100, 1, 200, 1]);
 
     const out = h.core.readOutput();
     expect(out[0]).toBeCloseTo(300, 4);
+  });
+
+  it("dispatches non freq/amp controls from descriptor metadata", () => {
+    const arena = new ArrayBuffer(1024 * 1024);
+    const descriptor = Object.freeze({
+      ...makeDescriptor("src/filter", 0),
+      params: Object.freeze([
+        Object.freeze({ name: "cutoff", default: 1200, min: 20, max: 20000, rate: "block" as const, smoothing: "step" as const }),
+      ]),
+    });
+    let observed = 0;
+    const base = createConstAdapter(arena, "src/filter", 0, []);
+    const adapter: FakeGraphAdapter = {
+      ...base,
+      descriptor,
+      params: buildNodeDefParamTable(descriptor),
+      computeWithParams(_statePtr, params, outputPtr, frameCount) {
+        observed = params[0].value;
+        new Float64Array(arena, outputPtr, frameCount).fill(observed);
+        return true;
+      },
+    };
+    const h = buildGraphHarness({ adapters: { "src/filter": adapter }, arena, callOrder: [] });
+    commitGraph(h.core, [instance("filter", "src/filter", 1, {
+      controlChannels: [{ param: "cutoff", channel: 0 }],
+    })]);
+    for (let i = 0; i < FADE_IN_BLOCKS + 2; i++) h.step(1, [6400]);
+    expect(observed).toBe(6400);
+    expect(h.core.readOutput()[0]).toBeCloseTo(6400, 4);
   });
 
   it("holds prefill values for params without a channel (sparse binding)", () => {
@@ -531,13 +690,15 @@ describe("workletCore graph — topological execution and port wiring", () => {
     // Only amp is bound to a channel; freq is unbound and must hold its
     // prefill value even while the SAB carries junk in channel 0 (which
     // the interim per-node window would have read as freq).
-    instantiate(h.core, "id-a", "src/echo-a", 1, {
+    commitGraph(h.core, [
+      instance("id-a", "src/echo-a", 1, {
       controlChannels: [{ param: "amp", channel: 1 }],
       prefill: [
         { name: "freq", value: 150 },
         { name: "amp", value: 0.5 },
       ],
-    });
+    })
+    ]);
     for (let i = 0; i < FADE_IN_BLOCKS + 2; i++) h.step(1, [999, 1, 0, 0]);
 
     // The echo adapter outputs its freq control: the prefilled 150 must
@@ -563,12 +724,14 @@ describe("workletCore graph — multi-node retirement (VAL-ENGINE-035)", () => {
       arena,
       callOrder,
     });
-    instantiate(h.core, "id-a", "src/a", 1);
-    instantiate(h.core, "id-b", "src/b", 1);
+    commitGraph(h.core, [
+      instance("id-a", "src/a", 1),
+      instance("id-b", "src/b", 1)
+    ]);
     for (let i = 0; i < FADE_IN_BLOCKS + 2; i++) h.step(1);
 
     const releasesBefore = h.releaseCount();
-    h.core.handleMessage({ type: "retire", identity: { identity: "id-a", epoch: 1 } });
+    commitGraph(h.core, [{ type: "retire", identity: { identity: "id-a", epoch: 1 } }]);
     for (let i = 0; i < FADE_OUT_BLOCKS + 2; i++) h.step(1);
 
     // The retired node's zones (state + output) were released; the
@@ -591,14 +754,16 @@ describe("workletCore graph — multi-node retirement (VAL-ENGINE-035)", () => {
       arena,
       callOrder,
     });
-    instantiate(h.core, "id-a", "src/a", 1);
-    instantiate(h.core, "id-b", "fx/gain", 1, {
+    commitGraph(h.core, [
+      instance("id-a", "src/a", 1),
+      instance("id-b", "fx/gain", 1, {
       audioInputs: [{ port: 0, sourceIdentity: "id-a", sourcePort: 0 }],
-    });
+    })
+    ]);
     for (let i = 0; i < FADE_IN_BLOCKS + 2; i++) h.step(1);
     expect(h.core.readOutput()[0]).toBeCloseTo(1.0, 6);
 
-    h.core.handleMessage({ type: "retire", identity: { identity: "id-a", epoch: 1 } });
+    commitGraph(h.core, [{ type: "retire", identity: { identity: "id-a", epoch: 1 } }]);
     for (let i = 0; i < FADE_OUT_BLOCKS + 2; i++) h.step(1);
 
     // The source is gone; the consumer must read silence (never a
@@ -654,7 +819,9 @@ describe("workletCore graph — failure-atomic prepare/commit/activate", () => {
       callOrder,
       limitBytes,
     });
-    instantiate(h.core, "old", "src/a", 1);
+    commitGraph(h.core, [
+      instance("old", "src/a", 1)
+    ]);
     for (let i = 0; i < FADE_IN_BLOCKS + 2; i++) h.step(1);
     const releasesBefore = h.releaseCount();
 
@@ -677,7 +844,9 @@ describe("workletCore graph — failure-atomic prepare/commit/activate", () => {
       arena,
       callOrder,
     });
-    instantiate(h.core, "old", "src/a", 1);
+    commitGraph(h.core, [
+      instance("old", "src/a", 1)
+    ]);
     for (let i = 0; i < FADE_IN_BLOCKS + 2; i++) h.step(1);
 
     h.core.handleMessage(prepareAdd("candidate", "src/b", 2));
@@ -703,7 +872,9 @@ describe("workletCore graph — failure-atomic prepare/commit/activate", () => {
       arena,
       callOrder,
     });
-    instantiate(h.core, "old", "src/a", 1);
+    commitGraph(h.core, [
+      instance("old", "src/a", 1)
+    ]);
     for (let i = 0; i < FADE_IN_BLOCKS + 2; i++) h.step(1);
 
     h.core.handleMessage(prepareAdd("candidate", "src/b", 2));
@@ -743,7 +914,9 @@ describe("workletCore graph — per-instance trap containment", () => {
       arena,
       callOrder,
     });
-    instantiate(h.core, "old", "src/good", 1);
+    commitGraph(h.core, [
+      instance("old", "src/good", 1)
+    ]);
     for (let i = 0; i < FADE_IN_BLOCKS + 2; i++) h.step(1);
 
     expect(() => h.core.handleMessage({
@@ -794,8 +967,10 @@ describe("workletCore graph — per-instance trap containment", () => {
       arena,
       callOrder,
     });
-    instantiate(h.core, "bad", "src/bad", 1);
-    instantiate(h.core, "good", "src/good", 1);
+    commitGraph(h.core, [
+      instance("bad", "src/bad", 1),
+      instance("good", "src/good", 1)
+    ]);
     for (let i = 0; i < FADE_IN_BLOCKS + 2; i++) h.step(1);
     const statePointer = h.core.telemetry.instances.find((instance) => instance.identity === "bad")!
       .statePointer;
@@ -823,6 +998,9 @@ describe("workletCore graph — per-instance trap containment", () => {
         code: fault.code,
         identity: "bad",
       });
+      if (fault.mode === "trap") {
+        expect(h.engineFaults()).toEqual([]);
+      }
 
       mode.current = "success";
       h.step(1);
@@ -837,7 +1015,62 @@ describe("workletCore graph — per-instance trap containment", () => {
   });
 });
 
+describe("workletCore consecutive deadline overload", () => {
+  it("publishes OVERLOAD after eight consecutive missed block deadlines", () => {
+    const arena = new ArrayBuffer(1024 * 1024);
+    let now = 0;
+    let slow = false;
+    const callOrder: string[] = [];
+    const h = buildGraphHarness({
+      adapters: { "src/unit": createConstAdapter(arena, "src/unit", 1, callOrder) },
+      arena,
+      callOrder,
+      now: () => { now += slow ? 5 : 0; return now; },
+    });
+    commitGraph(h.core, [instance("unit", "src/unit", 1)]);
+    for (let i = 0; i < FADE_IN_BLOCKS + 2; i++) h.step(1);
+    expect(h.core.readOutput()[0]).toBeGreaterThan(0);
+    slow = true;
+    for (let i = 0; i < 8; i++) h.core.process(128);
+    expect(h.engineFaults()).toContainEqual(expect.objectContaining({
+      type: "engine-fault", reason: "OVERLOAD", consecutiveMisses: 8,
+    }));
+    h.core.process(128);
+    const fading = h.core.readOutput().slice(0, 128);
+    expect(Math.min(...fading)).toBeGreaterThan(0);
+    expect(Math.min(...fading)).toBeLessThan(1);
+    for (let i = 0; i < 4; i++) h.core.process(128);
+    expect(h.core.readOutput().slice(0, 128).some((sample) => sample !== 0)).toBe(false);
+  });
+});
+
 describe("workletCore graph — sample-indexed fade invariance", () => {
+  it("pause-fades and suspends output, then stop-fades without discarding the graph", () => {
+    const arena = new ArrayBuffer(1024 * 1024);
+    const callOrder: string[] = [];
+    const h = buildGraphHarness({
+      adapters: { "src/unit": createConstAdapter(arena, "src/unit", 1, callOrder) },
+      arena,
+      callOrder,
+    });
+    commitGraph(h.core, [instance("unit", "src/unit", 1)]);
+    for (let i = 0; i < FADE_IN_BLOCKS + 2; i++) h.step(1);
+    expect(h.core.readOutput()[0]).toBeGreaterThan(0);
+
+    h.core.handleMessage({ type: "transport-pause" });
+    h.step(1);
+    const pausedFade = h.core.readOutput().slice(0, 128);
+    expect(Math.min(...pausedFade)).toBeLessThan(1);
+    for (let i = 0; i < 3; i++) h.step(1);
+    expect(h.core.readOutput().slice(0, 128).every((sample) => sample === 0)).toBe(true);
+
+    h.core.handleMessage({ type: "transport-stop" });
+    h.core.handleMessage({ type: "transport-resume" });
+    for (let i = 0; i < FADE_IN_BLOCKS + 3; i++) h.step(1);
+    expect(h.core.telemetry.instances.map((entry) => entry.identity)).toContain("unit");
+    expect(h.core.readOutput()[0]).toBeGreaterThan(0);
+  });
+
   function renderFadeIn(partitions: readonly number[]): number[] {
     const arena = new ArrayBuffer(1024 * 1024);
     const callOrder: string[] = [];
@@ -847,7 +1080,9 @@ describe("workletCore graph — sample-indexed fade invariance", () => {
       callOrder,
       renderQuantumFrames: 256,
     });
-    instantiate(h.core, "unit", "src/unit", 1);
+    commitGraph(h.core, [
+      instance("unit", "src/unit", 1)
+    ]);
     const samples: number[] = [];
     for (const frames of partitions) {
       h.step(1, undefined, frames);
@@ -865,9 +1100,11 @@ describe("workletCore graph — sample-indexed fade invariance", () => {
       callOrder,
       renderQuantumFrames: 256,
     });
-    instantiate(h.core, "unit", "src/unit", 1);
+    commitGraph(h.core, [
+      instance("unit", "src/unit", 1)
+    ]);
     for (let i = 0; i < FADE_IN_BLOCKS + 2; i++) h.step(1);
-    h.core.handleMessage({ type: "retire", identity: { identity: "unit", epoch: 1 } });
+    commitGraph(h.core, [{ type: "retire", identity: { identity: "unit", epoch: 1 } }]);
     const samples: number[] = [];
     for (const frames of partitions) {
       h.step(1, undefined, frames);
@@ -900,7 +1137,7 @@ describe("workletCore graph — sample-indexed fade invariance", () => {
 // ---------------------------------------------------------------------------
 
 describe("workletCore graph — zone exhaustion and node limit (synthesis.md §3.5)", () => {
-  it("publishes a zone-exhausted diagnostic instead of glitching", () => {
+  it("rejects an exhausted candidate and keeps the live graph audible", () => {
     const arena = new ArrayBuffer(1024 * 1024);
     const callOrder: string[] = [];
     // Arena bounded so the FIRST node fits but the second's output zone
@@ -923,12 +1160,14 @@ describe("workletCore graph — zone exhaustion and node limit (synthesis.md §3
       callOrder,
       limitBytes,
     });
-    instantiate(h.core, "id-a", "src/a", 1);
-    instantiate(h.core, "id-b", "src/b", 1);
+    commitGraph(h.core, [instance("id-a", "src/a", 1)]);
     for (let i = 0; i < FADE_IN_BLOCKS + 2; i++) h.step(1);
-
-    const diags = h.diagnostics();
-    expect(diags.some((d) => d.code === "zone-exhausted" && d.identity === "id-b")).toBe(true);
+    commitGraph(h.core, [instance("id-b", "src/b", 2)]);
+    expect(h.events).toContainEqual(expect.objectContaining({
+      type: "graph-transaction-ack", phase: "prepare", ok: false, reason: "zone-exhausted",
+    }));
+    h.step(1);
+    expect(h.core.telemetry.instances).toHaveLength(1);
     // The first node still renders cleanly.
     expect(h.core.readOutput()[0]).toBeCloseTo(0.25, 6);
   });
@@ -943,17 +1182,17 @@ describe("workletCore graph — zone exhaustion and node limit (synthesis.md §3
       arena,
       callOrder,
     });
-    for (let i = 0; i < MAX_SYNTH_NODES; i++) {
-      instantiate(h.core, `id-${i}`, "src/a", 1);
-    }
-    expect(h.diagnostics()).toHaveLength(0);
-    instantiate(h.core, `id-${MAX_SYNTH_NODES}`, "src/a", 1);
-    const diags = h.diagnostics();
-    expect(
-      diags.some(
-        (d) => d.code === "node-limit" && d.identity === `id-${MAX_SYNTH_NODES}`,
-      ),
-    ).toBe(true);
+    commitGraph(h.core, Array.from({ length: MAX_SYNTH_NODES }, (_, i) =>
+      instance(`id-${i}`, "src/a", 1)));
+    h.step(1);
+    expect(h.core.telemetry.instances).toHaveLength(MAX_SYNTH_NODES);
+    commitGraph(h.core, [instance(`id-${MAX_SYNTH_NODES}`, "src/a", 2)]);
+    expect(h.events).toContainEqual(expect.objectContaining({
+      type: "graph-transaction-ack", phase: "prepare", ok: false, reason: "node-limit",
+    }));
+    h.step(1);
+    expect(h.core.telemetry.activeEpoch).toBe(1);
+    expect(h.core.telemetry.instances).toHaveLength(MAX_SYNTH_NODES);
   });
 });
 
@@ -974,11 +1213,13 @@ describe("workletCore graph — steady state stays allocation-free (VAL-ENGINE-0
       arena,
       callOrder,
     });
-    instantiate(h.core, "id-a", "src/a", 1);
-    instantiate(h.core, "id-b", "src/b", 1);
-    instantiate(h.core, "id-c", "fx/gain", 1, {
+    commitGraph(h.core, [
+      instance("id-a", "src/a", 1),
+      instance("id-b", "src/b", 1),
+      instance("id-c", "fx/gain", 1, {
       audioInputs: [{ port: 0, sourceIdentity: "id-a", sourcePort: 0 }],
-    });
+    })
+    ]);
     for (let i = 0; i < FADE_IN_BLOCKS + 2; i++) h.step(1);
 
     const allocsBefore = h.allocCount();
@@ -1005,7 +1246,9 @@ describe("workletCore graph — quantum growth re-derives arena views (synthesis
       callOrder,
       renderQuantumFrames: 128,
     });
-    instantiate(h.core, "id-a", "src/a", 1);
+    commitGraph(h.core, [
+      instance("id-a", "src/a", 1)
+    ]);
     for (let i = 0; i < FADE_IN_BLOCKS + 2; i++) h.step(1);
     expect(h.core.readOutput()[0]).toBeCloseTo(0.5, 6);
 

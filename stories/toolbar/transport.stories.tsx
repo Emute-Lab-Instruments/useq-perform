@@ -17,6 +17,9 @@ const meta: Meta<typeof TransportToolbar> = {
   args: {
     mode: 'hardware',
     progress: 0.5,
+    bpm: 120,
+    beatsPerBar: 4,
+    onBpmCommit: noop,
     onPlay: noop,
     onPause: noop,
     onStop: noop,
@@ -30,3 +33,4 @@ type Story = StoryObj<typeof TransportToolbar>;
 export const Playing: Story = { args: { state: 'playing' } };
 export const Paused: Story = { args: { state: 'paused' } };
 export const Stopped: Story = { args: { state: 'stopped' } };
+export const NoRuntime: Story = { args: { state: 'stopped', mode: 'none', bpm: null } };

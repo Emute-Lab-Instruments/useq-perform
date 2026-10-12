@@ -1,46 +1,88 @@
-import { createSignal } from "solid-js";
-import type { ChromeProps, ChromeMode, Geometry } from "./types";
+import { createSignal, onCleanup, onMount } from "solid-js";
+import type { ChromeProps, ChromeMode, Geometry, PanelSide } from "./types";
 import { usePointerDrag } from "./usePointerDrag";
+import {
+  clampGeometry,
+  isNarrowViewport,
+  loadPaneGeometry,
+  savePaneGeometry,
+  viewportSize,
+} from "./geometry";
 
 const MIN_W = 240;
 const MIN_H = 180;
+const EDGE_GAP = 16;
 
 const EXPAND_W = () => window.innerWidth * 0.9;
 const EXPAND_H = () => window.innerHeight * 0.9;
 
-function defaultGeometry(): Geometry {
+/** Default geometry: a column docked to `side`, leaving room for a second panel. */
+export function defaultPaneGeometry(side: PanelSide = "right"): Geometry {
   const w = Math.min(480, window.innerWidth * 0.35);
   const h = window.innerHeight * 0.7;
   return {
-    x: window.innerWidth - w - 16,
+    x: side === "left" ? EDGE_GAP : window.innerWidth - w - EDGE_GAP,
     y: (window.innerHeight - h) / 2,
     w,
     h,
   };
 }
 
+function fitToViewport(geo: Geometry): Geometry {
+  return clampGeometry(geo, viewportSize(), MIN_W, MIN_H);
+}
+
+/** Pointer-downs on title-bar buttons must not start a window drag. */
+function startedOnButton(e: PointerEvent): boolean {
+  return e.target instanceof Element && e.target.closest("button") !== null;
+}
+
 type ResizeEdge = "n" | "s" | "e" | "w" | "nw" | "ne" | "sw" | "se";
 
 export function PaneChrome(props: ChromeProps) {
-  const [geo, setGeo] = createSignal<Geometry>(defaultGeometry());
+  const initial = fitToViewport(
+    loadPaneGeometry(props.panelId) ?? defaultPaneGeometry(props.side),
+  );
+  const [geo, setGeo] = createSignal<Geometry>(initial);
   const [mode, setMode] = createSignal<ChromeMode>("normal");
-  const [prevGeo, setPrevGeo] = createSignal<Geometry>(defaultGeometry());
+  const [prevGeo, setPrevGeo] = createSignal<Geometry>(initial);
+
+  /** Persist the user-chosen geometry (never the transient expanded one). */
+  function persist() {
+    if (mode() === "normal") savePaneGeometry(props.panelId, geo());
+  }
+
+  // Keep the panel inside the viewport when the window shrinks.
+  onMount(() => {
+    const onResize = () => setGeo(fitToViewport(geo()));
+    window.addEventListener("resize", onResize);
+    onCleanup(() => window.removeEventListener("resize", onResize));
+  });
 
   // ---- Title bar drag (move) ----
+  // Disabled on narrow viewports, where the pane is laid out full-screen by CSS.
   const titleDrag = usePointerDrag({
-    onStart: () => { setPrevGeo(geo()); },
+    onStart: (e) => {
+      if (isNarrowViewport() || startedOnButton(e)) return false;
+      setPrevGeo(geo());
+    },
     onMove: (_e, dx, dy) => {
       const prev = prevGeo();
-      setGeo({ ...prev, x: prev.x + dx, y: prev.y + dy });
+      setGeo(fitToViewport({ ...prev, x: prev.x + dx, y: prev.y + dy }));
     },
+    onEnd: persist,
   });
 
   // ---- Edge / corner resize ----
   function makeResizeDrag(edge: ResizeEdge) {
     return usePointerDrag({
-      onStart: () => { setPrevGeo(geo()); },
+      onStart: () => {
+        if (isNarrowViewport()) return false;
+        setPrevGeo(geo());
+      },
       onMove: (_e, dx, dy) => {
         const p = prevGeo();
+        const vp = viewportSize();
         let { x, y, w, h } = p;
 
         if (edge.includes("w")) { x = p.x + dx; w = p.w - dx; }
@@ -48,12 +90,19 @@ export function PaneChrome(props: ChromeProps) {
         if (edge.includes("n")) { y = p.y + dy; h = p.h - dy; }
         if (edge.includes("s")) { h = p.h + dy; }
 
+        // Constrain the dragged edge to the viewport.
+        if (x < 0) { w += x; x = 0; }
+        if (y < 0) { h += y; y = 0; }
+        if (x + w > vp.width) w = vp.width - x;
+        if (y + h > vp.height) h = vp.height - y;
+
         // Clamp minimums
         if (w < MIN_W) { if (edge.includes("w")) x = p.x + p.w - MIN_W; w = MIN_W; }
         if (h < MIN_H) { if (edge.includes("n")) y = p.y + p.h - MIN_H; h = MIN_H; }
 
-        setGeo({ x, y, w, h });
+        setGeo(fitToViewport({ x, y, w, h }));
       },
+      onEnd: persist,
     });
   }
 
@@ -70,7 +119,7 @@ export function PaneChrome(props: ChromeProps) {
   function toggleExpand() {
     if (mode() === "expanded") {
       setMode("normal");
-      setGeo(prevGeo());
+      setGeo(fitToViewport(prevGeo()));
     } else {
       setPrevGeo(geo());
       const ew = EXPAND_W();
@@ -95,7 +144,9 @@ export function PaneChrome(props: ChromeProps) {
         top: `${geo().y}px`,
         width: `${geo().w}px`,
         height: `${geo().h}px`,
+        "--panel-stack": String(props.stackIndex ?? 0),
       }}
+      data-panel-id={props.panelId}
     >
       {/* Resize zones */}
       <div class="pane-resize-zone pane-resize-zone--n"  onPointerDown={resizeN} />
@@ -112,6 +163,7 @@ export function PaneChrome(props: ChromeProps) {
         class="pane-edge-expand-btn"
         onClick={toggleExpand}
         title={mode() === "expanded" ? "Collapse" : "Expand"}
+        aria-label={mode() === "expanded" ? "Collapse" : "Expand"}
       >
         <span class={`pane-edge-caret ${mode() === "expanded" ? "pane-edge-caret--right" : "pane-edge-caret--left"}`} />
       </button>

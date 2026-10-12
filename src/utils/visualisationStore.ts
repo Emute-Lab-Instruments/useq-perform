@@ -51,13 +51,6 @@ export interface VisSettings {
   maxHistorySeconds: number;
 }
 
-export interface SerialBufferSnapshot {
-  /** Channel data arrays, oldest-first. Index 0 = time, 1..8 = channels. */
-  channels: number[][];
-  /** Number of valid samples per channel. */
-  lengths: number[];
-}
-
 export interface VisualisationState {
   /** Current simulation time from the stream parser / mock generator. */
   currentTime: number;
@@ -71,8 +64,6 @@ export interface VisualisationState {
   bar: number;
   /** Kind of the most recent update (e.g. "data", "time", "register"). */
   lastChangeKind: string;
-  /** Serial buffer snapshots for raw-data vis. */
-  serialBuffers: SerialBufferSnapshot;
   /** Current colour palette for serial vis channels. */
   palette: string[];
 }
@@ -82,7 +73,12 @@ export interface VisualisationState {
  */
 export type VisualisationSession = VisualisationState;
 
-const DEFAULT_SETTINGS: VisSettings = {
+/**
+ * Canonical default vis settings. Single source of truth — the sampling
+ * policy (visualisationSamplingPolicy.ts) falls back to these values when
+ * clamping user-provided settings.
+ */
+export const DEFAULT_VIS_SETTINGS: VisSettings = {
   showFutureProjection: false,
   windowDuration: 10,
   sampleCount: 100,
@@ -102,19 +98,13 @@ const DEFAULT_SETTINGS: VisSettings = {
   maxHistorySeconds: 30,
 };
 
-const EMPTY_SERIAL_BUFFERS: SerialBufferSnapshot = {
-  channels: [],
-  lengths: [],
-};
-
 const initialState: VisualisationState = {
   currentTime: 0,
   displayTime: 0,
-  settings: { ...DEFAULT_SETTINGS },
+  settings: { ...DEFAULT_VIS_SETTINGS },
   expressions: {},
   bar: 0,
   lastChangeKind: "",
-  serialBuffers: EMPTY_SERIAL_BUFFERS,
   palette: [],
 };
 
@@ -162,33 +152,6 @@ export function setLastChangeKind(
 ): void {
   setVisStore("lastChangeKind", kind);
   visualisationSessionChannel.publish({ ...detail, kind });
-}
-
-/**
- * Snapshot serial CircularBuffer instances into plain arrays for reactive
- * consumption. Call this from the serial-data update path.
- */
-export function snapshotSerialBuffers(
-  buffers: Array<{
-    length: number;
-    oldest(i: number): number;
-    capacity: number;
-  }>,
-): void {
-  const channels: number[][] = [];
-  const lengths: number[] = [];
-
-  for (const buf of buffers) {
-    const len = buf.length;
-    lengths.push(len);
-    const arr: number[] = new Array(len);
-    for (let i = 0; i < len; i++) {
-      arr[i] = buf.oldest(i);
-    }
-    channels.push(arr);
-  }
-
-  setVisStore("serialBuffers", reconcile({ channels, lengths }));
 }
 
 /**

@@ -19,7 +19,7 @@ layer: behavioural
 
 ## 1. General rules
 
-1.1 URL parameters are the **highest-precedence configuration source**, above persisted settings and product defaults (see `src/runtime/startupContext.ts`).
+1.1 URL parameters are the **highest-precedence configuration source**, above persisted settings and product defaults (see `src/runtime/startupContext.ts`). Values from `?config` are session-only overrides: bootstrap and later unrelated settings edits must not write them to storage. An explicit edit persists only the keys in that edit, merged over the prior stored settings.
 
 1.2 An unknown URL param is **stored in `startupFlags.params` but is not an error**. Future params may be added; old bundles must not crash on encountering them.
 
@@ -56,7 +56,7 @@ These are internal tooling flags. They carry no stability promise and may move o
 | `noModuleMode` | `true` | Use the in-browser ModuLisp interpreter without hardware | `startupContext.ts` |
 | `virtualGamepad` | `true` | Mount an interactive virtual Xbox gamepad overlay for testing gamepad controls without hardware | `bootstrap.ts` |
 | `nativeBridge` / `wsPort` | *(presence)* or port number | Connect to a uSEQ engine running in a separate native process (e.g. the VCV Rack plugin) over a loopback WebSocket `ws://127.0.0.1:<port>` (default 17890), presented to the app as an ordinary serial port so it reports a hardware connection. Distinct from `noModuleMode`. See [runtime-modes.md](runtime-modes.md). | `bootstrap.ts` |
-| `calibrate` | `1` | *(Spec only — not yet implemented.)* Open calibration picker on hardware connection (see [calibration.md §2.1](calibration.md)) | — |
+| `calibrate` | `1` | Open the calibration picker on the next boot once a hardware JSON-protocol connection is established; aborts the flow on disconnect (see [calibration.md §2.1](calibration.md)). | `ApplicationRoot.tsx` |
 
 3.1 Boolean flags use `=true` and are checked with strict equality, except `?nosave` which is a presence-only flag (`urlParams.has()`).
 

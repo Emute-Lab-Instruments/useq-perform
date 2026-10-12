@@ -127,15 +127,15 @@ describe("createMidiInputService — unsupported browser", () => {
   let originalRequestMIDIAccess: typeof navigator.requestMIDIAccess | undefined;
 
   beforeEach(() => {
-    originalRequestMIDIAccess = (navigator as Record<string, unknown>)
+    originalRequestMIDIAccess = (navigator as unknown as { requestMIDIAccess?: unknown })
       .requestMIDIAccess as typeof navigator.requestMIDIAccess | undefined;
     // Remove the API to simulate an unsupported browser.
-    delete (navigator as Record<string, unknown>).requestMIDIAccess;
+    delete (navigator as unknown as { requestMIDIAccess?: unknown }).requestMIDIAccess;
   });
 
   afterEach(() => {
     if (originalRequestMIDIAccess !== undefined) {
-      (navigator as Record<string, unknown>).requestMIDIAccess =
+      (navigator as unknown as { requestMIDIAccess?: unknown }).requestMIDIAccess =
         originalRequestMIDIAccess;
     }
   });
@@ -171,17 +171,17 @@ describe("createMidiInputService — mocked requestMIDIAccess", () => {
 
   afterEach(() => {
     if (originalRequestMIDIAccess !== undefined) {
-      (navigator as Record<string, unknown>).requestMIDIAccess =
+      (navigator as unknown as { requestMIDIAccess?: unknown }).requestMIDIAccess =
         originalRequestMIDIAccess;
     } else {
-      delete (navigator as Record<string, unknown>).requestMIDIAccess;
+      delete (navigator as unknown as { requestMIDIAccess?: unknown }).requestMIDIAccess;
     }
     vi.restoreAllMocks();
   });
 
   it("sets permission to 'granted' on success", async () => {
     const mockAccess = makeMockAccess([]);
-    (navigator as Record<string, unknown>).requestMIDIAccess = vi
+    (navigator as unknown as { requestMIDIAccess?: unknown }).requestMIDIAccess = vi
       .fn()
       .mockResolvedValue(mockAccess);
 
@@ -200,7 +200,7 @@ describe("createMidiInputService — mocked requestMIDIAccess", () => {
       onmidimessage: null,
     };
     const mockAccess = makeMockAccess([mockInput]);
-    (navigator as Record<string, unknown>).requestMIDIAccess = vi
+    (navigator as unknown as { requestMIDIAccess?: unknown }).requestMIDIAccess = vi
       .fn()
       .mockResolvedValue(mockAccess);
 
@@ -219,7 +219,7 @@ describe("createMidiInputService — mocked requestMIDIAccess", () => {
   });
 
   it("sets permission to 'denied' when requestMIDIAccess rejects", async () => {
-    (navigator as Record<string, unknown>).requestMIDIAccess = vi
+    (navigator as unknown as { requestMIDIAccess?: unknown }).requestMIDIAccess = vi
       .fn()
       .mockRejectedValue(new DOMException("Permission denied", "NotAllowedError"));
 
@@ -231,7 +231,7 @@ describe("createMidiInputService — mocked requestMIDIAccess", () => {
 
   it("fires permission change callbacks", async () => {
     const mockAccess = makeMockAccess([]);
-    (navigator as Record<string, unknown>).requestMIDIAccess = vi
+    (navigator as unknown as { requestMIDIAccess?: unknown }).requestMIDIAccess = vi
       .fn()
       .mockResolvedValue(mockAccess);
 
@@ -253,7 +253,7 @@ describe("createMidiInputService — mocked requestMIDIAccess", () => {
       onmidimessage: null,
     };
     const mockAccess = makeMockAccess([mockInput]);
-    (navigator as Record<string, unknown>).requestMIDIAccess = vi
+    (navigator as unknown as { requestMIDIAccess?: unknown }).requestMIDIAccess = vi
       .fn()
       .mockResolvedValue(mockAccess);
 
@@ -275,7 +275,7 @@ describe("createMidiInputService — mocked requestMIDIAccess", () => {
       onmidimessage: null,
     };
     const mockAccess = makeMockAccess([mockInput]);
-    (navigator as Record<string, unknown>).requestMIDIAccess = vi
+    (navigator as unknown as { requestMIDIAccess?: unknown }).requestMIDIAccess = vi
       .fn()
       .mockResolvedValue(mockAccess);
 
@@ -296,7 +296,7 @@ describe("createMidiInputService — mocked requestMIDIAccess", () => {
       onmidimessage: null,
     };
     const mockAccess = makeMockAccess([mockInput]);
-    (navigator as Record<string, unknown>).requestMIDIAccess = vi
+    (navigator as unknown as { requestMIDIAccess?: unknown }).requestMIDIAccess = vi
       .fn()
       .mockResolvedValue(mockAccess);
 
@@ -334,7 +334,7 @@ describe("createMidiInputService — mocked requestMIDIAccess", () => {
       onmidimessage: null,
     };
     const mockAccess = makeMockAccess([mockInput]);
-    (navigator as Record<string, unknown>).requestMIDIAccess = vi
+    (navigator as unknown as { requestMIDIAccess?: unknown }).requestMIDIAccess = vi
       .fn()
       .mockResolvedValue(mockAccess);
 
@@ -350,7 +350,7 @@ describe("createMidiInputService — mocked requestMIDIAccess", () => {
 
   it("returns an unsubscribe function from onMessage", async () => {
     const mockAccess = makeMockAccess([]);
-    (navigator as Record<string, unknown>).requestMIDIAccess = vi
+    (navigator as unknown as { requestMIDIAccess?: unknown }).requestMIDIAccess = vi
       .fn()
       .mockResolvedValue(mockAccess);
 
@@ -376,7 +376,7 @@ describe("createMidiInputService — mocked requestMIDIAccess", () => {
       onmidimessage: null,
     };
     const mockAccess = makeMockAccess([mockInput]);
-    (navigator as Record<string, unknown>).requestMIDIAccess = vi
+    (navigator as unknown as { requestMIDIAccess?: unknown }).requestMIDIAccess = vi
       .fn()
       .mockResolvedValue(mockAccess);
 

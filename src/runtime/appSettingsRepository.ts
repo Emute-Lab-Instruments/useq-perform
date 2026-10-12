@@ -1,6 +1,5 @@
 import defaultConfig from "./default-config.json" with { type: "json" };
 import {
-  clearPersistedUserSettings,
   createDefaultUserSettings,
   defaultUserSettings,
   loadBootstrapSettings,
@@ -14,7 +13,6 @@ import {
 } from "../lib/appSettings.ts";
 import { defaultMainEditorStartingCode } from "../lib/editorDefaults.ts";
 import type { RuntimeSettingsSource } from "./runtimeDiagnostics.ts";
-import { load, save, PERSISTENCE_KEYS } from "../lib/persistence.ts";
 import {
   getStartupFlagsSnapshot,
   type StartupFlags,
@@ -34,6 +32,26 @@ const listeners = new Set<SettingsListener>();
 
 function cloneSettings(settings: AppSettings): AppSettings {
   return normalizeUserSettings(settings);
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return Boolean(value) && typeof value === "object" && !Array.isArray(value);
+}
+
+function changedSettingsPatch(current: unknown, patch: unknown): unknown {
+  if (!isRecord(patch)) return {};
+  const base = isRecord(current) ? current : {};
+  const changed: Record<string, unknown> = {};
+  for (const [key, value] of Object.entries(patch)) {
+    const prior = base[key];
+    if (isRecord(value) && isRecord(prior)) {
+      const nested = changedSettingsPatch(prior, value) as Record<string, unknown>;
+      if (Object.keys(nested).length > 0) changed[key] = nested;
+    } else if (JSON.stringify(value) !== JSON.stringify(prior)) {
+      changed[key] = value;
+    }
+  }
+  return changed;
 }
 
 function notifyListeners(): void {
@@ -216,22 +234,27 @@ export function replaceAppSettings(
   return getAppSettings();
 }
 
-export function loadAppSettings(): AppSettings {
-  const persistedSettings = readPersistedUserSettings({
-    bypassLocalStorage: resolveRepositoryStartupFlags().nosave,
-  });
-  return replaceAppSettings(
-    persistedSettings ?? createDefaultUserSettings(),
-  );
-}
-
 export function updateAppSettings(
   values: unknown,
   options: { persist?: boolean } = {},
 ): AppSettings {
-  return replaceAppSettings(mergeUserSettings(activeSettings, values), {
-    persist: options.persist ?? true,
-  });
+  const persistencePatch = changedSettingsPatch(activeSettings, values);
+  const nextSettings = mergeUserSettings(activeSettings, values);
+  if (
+    (options.persist ?? true) &&
+    Object.keys(persistencePatch as Record<string, unknown>).length > 0
+  ) {
+    // Persist the explicit patch over the stored baseline. URL configuration
+    // is active for this session, but must not leak into unrelated saved keys.
+    const persisted = readPersistedUserSettings({
+      bypassLocalStorage: resolveRepositoryStartupFlags().nosave,
+    });
+    writePersistedUserSettings(
+      mergeUserSettings(persisted ?? createDefaultUserSettings(), persistencePatch),
+      { bypassLocalStorage: resolveRepositoryStartupFlags().nosave },
+    );
+  }
+  return replaceAppSettings(nextSettings);
 }
 
 export function resetAppSettings(section?: keyof AppSettings): AppSettings {
@@ -248,45 +271,3 @@ export function resetAppSettings(section?: keyof AppSettings): AppSettings {
 
   return replaceAppSettings(defaults, { persist: true });
 }
-
-export function deletePersistedSettings(): void {
-  clearPersistedUserSettings();
-}
-
-// ── Convenience wrapper ─────────────────────────────────────────────
-// Merged from legacy/config/configLoader.ts
-
-export async function loadConfiguration(): Promise<AppSettings> {
-  const result = await loadBootstrapSettingsWithMetadata();
-  return result.config;
-}
-
-/**
- * Alias kept for callers that used the old configLoader name.
- */
-export const loadConfigurationWithMetadata = loadBootstrapSettingsWithMetadata;
-
-// ── DevMode state persistence ───────────────────────────────────────
-
-export function loadDevModeConfiguration(): unknown | null {
-  if (!getStartupFlagsSnapshot().devmode) {
-    return null;
-  }
-
-  return load(PERSISTENCE_KEYS.devModeState);
-}
-
-export function saveDevModeConfiguration(devModeConfig: unknown): void {
-  save(PERSISTENCE_KEYS.devModeState, devModeConfig);
-}
-
-export const appSettingsRepository = {
-  getSettings: getAppSettings,
-  subscribe: subscribeAppSettings,
-  replaceSettings: replaceAppSettings,
-  loadSettings: loadAppSettings,
-  updateSettings: updateAppSettings,
-  resetSettings: resetAppSettings,
-  deletePersistedSettings,
-  loadBootstrapSettingsWithMetadata,
-};

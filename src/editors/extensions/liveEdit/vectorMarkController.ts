@@ -29,7 +29,6 @@ import { structField } from "../structure/adapter/stateField.ts";
 import {
   childrenOf,
   findById,
-  isCompound,
   isLeaf,
   parentOf,
   type Meta,
@@ -91,15 +90,6 @@ function isMarkableLiteral(node: Node): boolean {
 function hasLiveEditMeta(node: Node): boolean {
   if (node.kind === "document") return false;
   return node.metas.some((m: Meta) => m.kind === "live-edit");
-}
-
-/** Parse the seed value from a node's text (same as markAction.ts). */
-function parseSeedValue(node: Node): number | boolean | string {
-  if (node.kind === "number") return Number(node.text);
-  if (node.kind === "symbol" && node.text === "true") return true;
-  if (node.kind === "symbol" && node.text === "false") return false;
-  if (node.kind === "keyword") return node.text;
-  return 0;
 }
 
 /**
@@ -352,11 +342,6 @@ export function createVectorMarkController(options?: {
       // wrappers should be unwrapped.
       for (const el of session.elements) {
         if (el.state !== "deselected") continue;
-
-        const sourceText = view.state.doc.sliceString(
-          el.range.from,
-          el.range.to,
-        );
 
         // Find if this node in the structural tree has a live-edit Meta.
         // The idIndex maps node IDs to ranges; walk the tree to find

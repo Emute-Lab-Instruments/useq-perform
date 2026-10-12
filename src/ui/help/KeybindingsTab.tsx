@@ -1,14 +1,14 @@
 import { Component, For } from "solid-js";
 import { settings, requestSettingsUpdate } from "../../utils/settingsStore";
 import { actions, type ActionCategory } from "../../lib/keybindings/actions";
-import { defaultKeyBindings } from "../../lib/keybindings/defaults";
+import { activeKeyBindings } from "../keybindings/activeBindings";
 
-interface Binding {
+export interface Binding {
   description: string;
   key: string;
 }
 
-interface BindingSection {
+export interface BindingSection {
   title: string;
   bindings: Binding[];
 }
@@ -29,11 +29,11 @@ const displayCategories = new Set(categoryDisplay.map((c) => c.category));
  * Build sections from the action registry and default bindings.
  * Skips bindings with `when` clauses (internal/contextual bindings).
  */
-function buildSections(): BindingSection[] {
+export function buildSections(): BindingSection[] {
   // Group bindings by category
   const grouped = new Map<ActionCategory, Binding[]>();
 
-  for (const binding of defaultKeyBindings) {
+  for (const binding of activeKeyBindings()) {
     // Skip contextual bindings (picker, backspace gate, etc.)
     if (binding.when) continue;
 

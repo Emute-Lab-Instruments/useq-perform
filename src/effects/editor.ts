@@ -1,6 +1,6 @@
 // src/effects/editor.ts
-import { Effect } from "effect";
-import { editor, applyEditorFontSize } from "../lib/editorStore";
+import type { EditorView } from "@codemirror/view";
+import { applyEditorFontSize } from "../lib/editorStore";
 import { getAppSettings } from "../runtime/appSettingsRepository.ts";
 import { updateSettings } from "../runtime/runtimeService.ts";
 
@@ -36,50 +36,49 @@ declare global {
   }
 }
 
-export const adjustFontSize = (delta: number) =>
-  Effect.sync(() => {
-    const currentEditor = editor();
-    if (!currentEditor) return;
+export function adjustFontSize(currentEditor: EditorView | null, delta: number) {
+  if (!currentEditor) return;
 
-    const currentSettings = getAppSettings();
-    const newFontSize = currentSettings.editor.fontSize + delta;
-    applyEditorFontSize(currentEditor, newFontSize);
-    updateSettings({ editor: { fontSize: newFontSize } });
-  });
+  const currentSettings = getAppSettings();
+  const newFontSize = currentSettings.editor.fontSize + delta;
+  applyEditorFontSize(currentEditor, newFontSize);
+  updateSettings({ editor: { fontSize: newFontSize } });
+}
 
-export const loadCode = () =>
-  Effect.promise(async () => {
-    const currentEditor = editor();
-    if (!currentEditor) return;
+export async function loadCode(currentEditor: EditorView | null) {
+  if (!currentEditor) return;
 
-    try {
-      const [fileHandle] = await window.showOpenFilePicker();
-      const file = await fileHandle.getFile();
-      const contents = await file.text();
-      const data = JSON.parse(contents) as Record<string, unknown>;
-
-      const transactionSpec = {
-        changes: { from: 0, to: currentEditor.state.doc.length, insert: String(data['text'] ?? '') }
-      };
-      const transaction = currentEditor.state.update(transactionSpec);
-      currentEditor.dispatch(transaction);
-    } catch (e) {
-      console.error("Failed to load file", e instanceof Error ? e.message : String(e));
+  try {
+    const [fileHandle] = await window.showOpenFilePicker();
+    const file = await fileHandle.getFile();
+    const contents = await file.text();
+    const data: unknown = JSON.parse(contents);
+    if (typeof data !== "object" || data === null || Array.isArray(data) ||
+        !("text" in data) || typeof data.text !== "string" ||
+        ("format_version" in data && data.format_version !== 1)) {
+      throw new Error("Invalid uSEQ file: expected text and format_version 1 (or a legacy file without a version).");
     }
-  });
 
-export const saveCode = () =>
-  Effect.promise(async () => {
-    const currentEditor = editor();
-    if (!currentEditor) return;
-
-    const fileData = {
-        "text": currentEditor.state.doc.toString(),
-        "format_version": 1
+    const transactionSpec = {
+      changes: { from: 0, to: currentEditor.state.doc.length, insert: data.text }
     };
+    const transaction = currentEditor.state.update(transactionSpec);
+    currentEditor.dispatch(transaction);
+  } catch (e) {
+    console.error("Failed to load file", e instanceof Error ? e.message : String(e));
+  }
+}
 
-    await saveToFile(JSON.stringify(fileData), ".useq", "uSEQ Code");
-  });
+export async function saveCode(currentEditor: EditorView | null) {
+  if (!currentEditor) return;
+
+  const fileData = {
+      "text": currentEditor.state.doc.toString(),
+      "format_version": 1
+  };
+
+  await saveToFile(JSON.stringify(fileData), ".useq", "uSEQ Code");
+}
 
 // Local implementation of saveToFile using the File System Access API.
 // toolbar.mjs no longer exists; this is the canonical save helper for this module.

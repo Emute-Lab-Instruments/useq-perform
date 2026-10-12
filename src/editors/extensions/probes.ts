@@ -1,5 +1,6 @@
 import {
   type Extension,
+  Facet,
   StateEffect,
   StateField,
   type EditorState,
@@ -114,19 +115,21 @@ export function createDefaultProbeConfig(): ProbeConfig {
   };
 }
 
-// Module-level config reference, set by createProbeExtensions.
-let _config: ProbeConfig = createDefaultProbeConfig();
+const defaultProbeConfig = createDefaultProbeConfig();
+const probeConfig = Facet.define<ProbeConfig, ProbeConfig>({
+  combine: (configs) => configs[0] ?? defaultProbeConfig,
+});
 
 // Placement choice for v1: inline widget immediately after the probed form.
 // Follow-up options worth testing are block widgets under the form and an
 // absolutely positioned floating overlay anchored from editor coordinates.
 
-function getProbeRefreshIntervalMs(): number {
+function getProbeRefreshIntervalMs(config: ProbeConfig): number {
   // Lever 2 (adaptive quality, spec §1.7/§9.2): under sustained frame
   // pressure, multiply the configured probe refresh interval (1× / 2× /
   // 4×). The persisted setting is unchanged — the multiplier is applied
   // at read time so the override evaporates when pressure releases.
-  return _config.getRefreshIntervalMs() * getProbeIntervalMultiplier();
+  return config.getRefreshIntervalMs() * getProbeIntervalMultiplier();
 }
 
 const toggleProbeEffect = StateEffect.define<PersistedProbeSpec>();
@@ -169,11 +172,12 @@ function updateProbeRangeThroughChanges(
 
 const probeField = StateField.define<ProbeFieldValue>({
   create(state) {
+    const config = state.facet(probeConfig);
     // Filter out persisted probes whose positions exceed this document's length.
     // This prevents crashes when the extension is used in a smaller editor instance
     // (e.g., guide playgrounds) that shares localStorage with the main editor.
     const docLen = state.doc.length;
-    const probes = readPersistedProbes(_config).filter(
+    const probes = readPersistedProbes(config).filter(
       (p) => p.from <= docLen && p.to <= docLen
     );
     // Spec §1.8.3 restore semantics: rebuild each probe's expression at its
@@ -195,7 +199,7 @@ const probeField = StateField.define<ProbeFieldValue>({
         staleIds.add(probe.id);
       }
     }
-    return buildProbeSnapshot(probes, {}, [], _config.getLineWidth(), staleIds);
+    return buildProbeSnapshot(probes, {}, [], config.getLineWidth(), staleIds);
   },
 
   update(value, tr) {
@@ -205,9 +209,6 @@ const probeField = StateField.define<ProbeFieldValue>({
     let staleIds = value.staleIds;
 
     if (tr.docChanged) {
-      // Live-edit re-binds probes to current text (§1.5.3); a document edit
-      // resolves the restore-only stale condition, so clear all stale markers.
-      if (staleIds.size > 0) staleIds = new Set();
       const docLen = tr.state.doc.length;
       // Map positions through the change set first, then filter by new
       // document length. Filtering before mapping would incorrectly drop
@@ -228,6 +229,11 @@ const probeField = StateField.define<ProbeFieldValue>({
           );
         })
         .filter((p) => p.from <= docLen && p.to <= docLen);
+      // A restored mismatch is not consent to bind different code. Keep it
+      // stale until the saved expression matches again, or the user recreates it.
+      staleIds = new Set(probes.filter((probe) => staleIds.has(probe.id) &&
+        buildProbeExpression(tr.state, probe, probe.mode, probe.depth)?.code.trim() !== probe.cachedCode.trim(),
+      ).map((probe) => probe.id));
       highlights = mapHighlightsThroughChanges(highlights, tr.changes);
     }
 
@@ -294,7 +300,7 @@ const probeField = StateField.define<ProbeFieldValue>({
       probes,
       renderById,
       highlights,
-      _config.getLineWidth(),
+      tr.state.facet(probeConfig).getLineWidth(),
       staleIds,
     );
   },
@@ -336,6 +342,9 @@ const probeHighlightField = StateField.define<DecorationSet>({
 
 
 class ProbePlugin {
+  private destroyed = false;
+  private revision = 0;
+  private get config(): ProbeConfig { return this.view.state.facet(probeConfig); }
   private frameId: number | null = null;
   private lastRun = 0;
   private samplingInFlight = false;
@@ -373,6 +382,11 @@ class ProbePlugin {
   }
 
   update(update: ViewUpdate): void {
+    if (update.docChanged || update.viewportChanged ||
+        update.startState.field(probeField).probes !== update.state.field(probeField).probes) {
+      this.revision++;
+    }
+    if (!this.samplingInFlight) this.releaseUnusedSlots();
     if (update.docChanged || update.viewportChanged) {
       this.recomputeVisibleForms(update.view);
     }
@@ -381,7 +395,7 @@ class ProbePlugin {
     const nextSignature = probeSignature(probes);
     if (nextSignature !== this.previousProbeSignature) {
       this.previousProbeSignature = nextSignature;
-      persistProbes(_config, probes);
+      persistProbes(this.config, probes);
     }
 
     // Start or stop the animation frame loop based on whether probes or visible indexed forms exist.
@@ -413,25 +427,43 @@ class ProbePlugin {
     if (slot == null) return;
     this.slotMap.delete(probeId);
     this.slotDraining.add(slot);
-    _config.probeFree(slot).finally(() => {
+    this.config.probeFree(slot).catch((error) => {
+      dbg(`probe: failed to free slot ${slot} (${error})`);
+    }).finally(() => {
       this.slotDraining.delete(slot);
       this.slotFree.push(slot);
     });
   }
 
+  private releaseUnusedSlots(): void {
+    const activeIds = new Set(this.view.state.field(probeField).probes.map((probe) => probe.id));
+    for (const id of this.slotMap.keys()) {
+      if (this.destroyed || !activeIds.has(id)) this.freeSlot(id);
+    }
+  }
+
   destroy(): void {
+    this.destroyed = true;
+    this.revision++;
     if (this.frameId != null) {
       window.cancelAnimationFrame(this.frameId);
       this.frameId = null;
     }
-    for (const [id] of this.slotMap) this.freeSlot(id);
+    if (!this.samplingInFlight) this.releaseUnusedSlots();
     this.view.dom.removeEventListener("click", this.onClick);
     this.view.dom.removeEventListener("input", this.onWindowDurationInput);
     this.contextLines.destroy();
   }
 
   private drawContextLines(): void {
-    this.contextLines.draw(this.view.state.field(probeField).probes);
+    // Geometry changes arrive while CodeMirror is updating. coordsAtPos
+    // may only read layout after that update has completed.
+    this.view.requestMeasure({
+      key: this.contextLines,
+      read: () => {
+        if (!this.destroyed) this.contextLines.draw(this.view.state.field(probeField).probes);
+      },
+    });
   }
 
   private recomputeVisibleForms(view: EditorView): void {
@@ -495,18 +527,24 @@ class ProbePlugin {
   }
 
   private async tick(now: number): Promise<void> {
+    if (this.destroyed || !this.tickLoopActive) return;
     this.frameId = window.requestAnimationFrame(this.tick);
+    if (!this.view.dom.isConnected || document.visibilityState === "hidden") return;
     if (this.samplingInFlight) {
       if (import.meta.env.DEV) perf.count("probe-tick-skipped-inflight");
       return;
     }
-    if (now - this.lastRun < getProbeRefreshIntervalMs()) {
+    if (now - this.lastRun < getProbeRefreshIntervalMs(this.config)) {
       if (import.meta.env.DEV) perf.count("probe-tick-skipped-throttle");
       return;
     }
     this.lastRun = now;
 
-    const snapshot = this.view.state.field(probeField);
+    const state = this.view.state;
+    const revision = this.revision;
+    const snapshot = state.field(probeField);
+    const forms = this.visibleForms;
+    const isCurrent = () => !this.destroyed && revision === this.revision && this.config.isWasmEnabled();
     const visibleRanges = this.view.visibleRanges.map((range) => ({
       from: range.from,
       to: range.to,
@@ -527,7 +565,7 @@ class ProbePlugin {
     // Spec §1.6.3 / §2.10: in hardware-only mode (WASM disabled) probes do not
     // sample and from-list highlights are not computed. Each visible probe
     // renders a visually-disabled state, retaining its last sample if any.
-    if (!_config.isWasmEnabled()) {
+    if (!this.config.isWasmEnabled()) {
       if (import.meta.env.DEV) perf.count("probe-tick-wasm-disabled");
       const updates: ProbeRenderUpdate[] = [];
       for (const probe of visibleProbes) {
@@ -547,7 +585,7 @@ class ProbePlugin {
           probe.id,
           probe,
           disabledRender,
-          _config.getLineWidth(),
+          this.config.getLineWidth(),
         );
         updates.push({
           probe,
@@ -571,7 +609,7 @@ class ProbePlugin {
     }
     this.samplingInFlight = true;
     try {
-      const currentTime = _config.getCurrentTime();
+      const currentTime = this.config.getCurrentTime();
       const updates: ProbeRenderUpdate[] = [];
 
       // Free slots for probes that no longer exist
@@ -587,16 +625,17 @@ class ProbePlugin {
         if (import.meta.env.DEV) perf.begin("probe-build-render");
         const slotId = this.allocSlot(probe.id);
         const next = await buildRenderForProbe(
-          _config,
-          this.view.state,
+          this.config,
+          state,
           probe,
           currentTime,
           {
-            probeSampleCount: _config.getDefaultSamples(),
+            probeSampleCount: this.config.getDefaultSamples(),
           },
           slotId,
         );
         if (import.meta.env.DEV) perf.end("probe-build-render");
+        if (!isCurrent()) return;
         if (!next) continue;
 
         if (import.meta.env.DEV) perf.begin("probe-paint");
@@ -604,7 +643,7 @@ class ProbePlugin {
           next.probe.id,
           next.probe,
           next.render,
-          _config.getLineWidth(),
+          this.config.getLineWidth(),
         );
         if (import.meta.env.DEV) perf.end("probe-paint");
 
@@ -618,14 +657,16 @@ class ProbePlugin {
       const highlightsEnabled = getAppSettings().visualisation?.fromListHighlights !== false;
       const highlights = highlightsEnabled
         ? await computeProbeHighlights(
-            _config,
-            this.view.state,
-            this.visibleForms,
+            this.config,
+            state,
+            forms,
             snapshot.probes,
             this.highlightLKG,
             this.highlightIndexLKG,
           )
         : [];
+
+      if (!isCurrent()) return;
 
       // Do not rebuild an identical decoration set on every sampling tick.
       // Replacing the mark even when the active element has not changed can
@@ -645,6 +686,7 @@ class ProbePlugin {
       dbg(`probe: sampling tick failed (${error})`);
     } finally {
       this.samplingInFlight = false;
+      this.releaseUnusedSlots();
       if (import.meta.env.DEV) perf.end("probe-tick");
     }
   }
@@ -757,11 +799,22 @@ export { probeField, probeHighlightField, probeViewPlugin };
 
 /**
  * Create probe extensions with a custom configuration.
- * Sets the module-level config so all probe functions use the provided config.
+ * Configuration belongs to the editor state, including persistence callbacks.
  */
 export function createProbeExtensions(config: ProbeConfig): Extension[] {
-  _config = config;
-  return [probeField, probeHighlightField, probeViewPlugin];
+  return [probeConfig.of(config), probeField, probeHighlightField, probeViewPlugin];
 }
 
 export const probeExtensions = createProbeExtensions(createDefaultProbeConfig());
+
+/** Secondary documents keep their probes local and do not share runtime slots. */
+export function createEphemeralProbeExtensions(): Extension[] {
+  return createProbeExtensions({
+    ...createDefaultProbeConfig(),
+    loadPersistedProbes: () => [],
+    savePersistedProbes: () => {},
+    removePersistedProbes: () => {},
+    probeSet: async () => -1,
+    probeFree: async () => {},
+  });
+}

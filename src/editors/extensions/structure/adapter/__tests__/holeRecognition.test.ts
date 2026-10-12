@@ -8,7 +8,7 @@
 
 import { describe, expect, it } from "vitest";
 import { EditorState } from "@codemirror/state";
-// @ts-expect-error — clojure-mode has no type declarations
+
 import { default_extensions } from "@nextjournal/clojure-mode";
 
 import { treeFromLezer } from "../treeFromLezer.ts";

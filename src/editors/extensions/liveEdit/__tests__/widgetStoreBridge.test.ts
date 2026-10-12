@@ -7,7 +7,7 @@
  * primitives since the unit test environment has a SolidJS runtime available.
  */
 
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { describe, it, expect, vi } from "vitest";
 import { createRoot } from "solid-js";
 
 import {

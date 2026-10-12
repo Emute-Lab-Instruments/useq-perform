@@ -406,6 +406,16 @@ export const USEQ_JSON_PROTOCOL_SCHEMA = {
       ]
     },
     {
+      "type": "status",
+      "fields": [
+        {
+          "name": "status",
+          "kind": "string",
+          "required": true
+        }
+      ]
+    },
+    {
       "type": "meta",
       "fields": [
         {

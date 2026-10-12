@@ -36,15 +36,6 @@ const fast = (n: number, p: number): number => frac(p * n);
 /** shift(offset, phase): phase-shift a phasor. */
 const shift = (offset: number, p: number): number => frac(p + offset);
 
-/** scale(value, inMin, inMax, outMin, outMax). */
-const scale = (
-  v: number,
-  inMin: number,
-  inMax: number,
-  outMin: number,
-  outMax: number,
-): number => outMin + ((v - inMin) / (inMax - inMin)) * (outMax - outMin);
-
 /** Euclidean rhythm: k hits spread across n steps. */
 const euclid = (k: number, n: number, p: number): number => {
   const step = Math.floor(frac(p) * n);

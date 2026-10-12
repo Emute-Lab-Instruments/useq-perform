@@ -39,9 +39,9 @@ let enabled = false;
 // ── Output name → serial buffer index mapping ───────────────────────
 //
 // Hardware stream channels are mapped via `serialOutputBufferRouting`:
-// the firmware's `hello` response provides output names like "s1"..."s8"
-// with index values that map to stream channel IDs. The routing table
-// maps channel ID → buffer index in `serialBuffers[]`.
+// a STREAM frame's wire channel (numbered by subscription order — see
+// `buildSerialOutputRouting` in src/runtime/jsonProtocol.ts) maps to a
+// buffer index in `serialBuffers[]`.
 //
 // Buffer index 0 is always time; output buffers start at 1.
 

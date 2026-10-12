@@ -288,10 +288,12 @@ export function createWasmRuntimeWorkerPort(
         { type: "evalCode", code, publish: true },
         "evalCode-result",
       );
-      try {
-        codeEvaluatedChannel.publish({ code });
-      } catch (error) {
-        dbg(`wasmRuntimeWorkerPort: failed to publish codeEvaluated: ${error}`);
+      if (!/^\s*(?:Error:|\{error\})/i.test(response.result ?? "")) {
+        try {
+          codeEvaluatedChannel.publish({ code });
+        } catch (error) {
+          dbg(`wasmRuntimeWorkerPort: failed to publish codeEvaluated: ${error}`);
+        }
       }
       return response.result;
     },
@@ -326,10 +328,13 @@ export function createWasmRuntimeWorkerPort(
         { type: "evalCodeWithDiagnostics", code, publish: true },
         "evalCodeWithDiagnostics-result",
       );
-      try {
-        codeEvaluatedChannel.publish({ code });
-      } catch (error) {
-        dbg(`wasmRuntimeWorkerPort: failed to publish codeEvaluated: ${error}`);
+      if (!response.diagnostics.some((diagnostic) => diagnostic.severity === "error")
+        && !/^\s*(?:Error:|\{error\})/i.test(response.result ?? "")) {
+        try {
+          codeEvaluatedChannel.publish({ code });
+        } catch (error) {
+          dbg(`wasmRuntimeWorkerPort: failed to publish codeEvaluated: ${error}`);
+        }
       }
       return {
         result: response.result,
@@ -545,10 +550,15 @@ export function createWasmRuntimeWorkerPort(
     },
 
     async readOutputClassifications(): Promise<import("../contracts/runtimePorts").OutputClassification | null> {
-      // Worker port: not yet wired through the worker protocol.
-      // Falls back to null (conservative invalidation) until the worker
-      // protocol is extended.
-      return null;
+      if (!isUseqWasmEnabled()) return null;
+      await ensureLoadedInternal();
+      const response = await send<
+        Extract<WasmWorkerResponse, { type: "readOutputClassifications-result" }>
+      >(
+        { type: "readOutputClassifications" },
+        "readOutputClassifications-result",
+      );
+      return response.classification;
     },
 
     async producerInstallSab(

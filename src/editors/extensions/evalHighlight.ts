@@ -1,6 +1,8 @@
 // CodeMirror extension for flashing highlight on evaluated code
 import { StateEffect, StateField, type EditorState } from "@codemirror/state";
-import { Decoration, EditorView } from "@codemirror/view";
+import { Decoration, EditorView, ViewPlugin } from "@codemirror/view";
+
+const flashTimers = new WeakMap<EditorView, ReturnType<typeof setTimeout>>();
 
 interface EvalHighlightValue {
   from: number;
@@ -40,7 +42,14 @@ export const evalHighlightField = StateField.define({
     }
     return decos;
   },
-  provide: f => EditorView.decorations.from(f)
+  provide: f => [
+    EditorView.decorations.from(f),
+    ViewPlugin.define((view) => ({ destroy() {
+      const timer = flashTimers.get(view);
+      if (timer !== undefined) clearTimeout(timer);
+      flashTimers.delete(view);
+    } })),
+  ],
 });
 
 // Helper to dispatch highlight effect and clear it after 1s
@@ -69,29 +78,24 @@ function getTopLevelRange(state: EditorState): { from: number; to: number } {
   return { from: 0, to: state.doc.length };
 }
 
-// Helper to dispatch highlight effect and clear it after 1s
-// Options: { isPreview: boolean } - use preview color for soft eval
+/** Each evaluation gets a full flash duration, independent of other editors. */
 export function flashEvalHighlight(view: EditorView, from?: number, to?: number, options: { isPreview?: boolean } = {}): void {
-  const { isPreview = false } = options;
-
-  // If range is provided, use it
-  if (from !== undefined && to !== undefined && from !== to) {
-    view.dispatch({ effects: evalHighlightEffect.of({ from, to, isPreview }) });
-    setTimeout(() => {
-      view.dispatch({ effects: evalHighlightEffect.of({ from: 0, to: 0 }) });
-    }, 1000);
-    return;
+  const previous = flashTimers.get(view);
+  if (previous !== undefined) {
+    clearTimeout(previous);
+    flashTimers.delete(view);
   }
-
-  // Otherwise calculate top-level range
-  const state = view.state;
-  const range = getTopLevelRange(state);
-  if (!range || range.from === range.to) {
+  const range = from !== undefined && to !== undefined && from !== to
+    ? { from, to }
+    : getTopLevelRange(view.state);
+  if (range.from === range.to) {
     view.dispatch({ effects: evalHighlightEffect.of({ from: 0, to: 0 }) });
     return;
   }
-  view.dispatch({ effects: evalHighlightEffect.of({ from: range.from, to: range.to, isPreview }) });
-  setTimeout(() => {
+  view.dispatch({ effects: evalHighlightEffect.of({ ...range, isPreview: options.isPreview }) });
+  const timer = setTimeout(() => {
+    flashTimers.delete(view);
     view.dispatch({ effects: evalHighlightEffect.of({ from: 0, to: 0 }) });
   }, 1000);
+  flashTimers.set(view, timer);
 }

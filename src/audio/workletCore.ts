@@ -35,8 +35,8 @@
  *      (VAL-SAB-019).
  *
  *   4. Graph mutation happens between render quanta. {@link WorkletCore.handleMessage}
- *      stages pending deltas; {@link WorkletCore.process} activates the
- *      staged set on the first matching block boundary (VAL-ENGINE-009/011).
+ *      prepares and commits candidates, then explicitly opens activation;
+ *      {@link WorkletCore.process} activates on the first matching block boundary (VAL-ENGINE-009/011).
  *
  *   5. Multi-node execution (synthesis.md §3.1): the core hosts N live
  *      instances and executes them in TOPOLOGICAL order of the patch
@@ -80,6 +80,7 @@ import {
   EMERGENCY_FADE_MS,
   MAX_RENDER_QUANTUM_FRAMES,
   MAX_SYNTH_NODES,
+  OVERLOAD_BLOCKS,
   PRODUCER_TIMEOUT_BLOCKS,
   SYNTH_FADE_IN_MS,
   SYNTH_FADE_OUT_MS,
@@ -91,19 +92,17 @@ import type {
   WorkletAttachControlBufferMessage,
   WorkletAudioInputWiring,
   WorkletControlChannel,
-  WorkletGraphActivatedEvent,
   WorkletAbortGraphMessage,
   WorkletActivateGraphMessage,
   WorkletCommitGraphMessage,
   WorkletInstantiateMessage,
   WorkletInstanceRetiredEvent,
   WorkletInstanceTelemetry,
-  WorkletModuleTransferMessage,
+  WorkletEngineFaultEvent,
   WorkletOutboundEvent,
   WorkletPrefillParam,
   WorkletProducerTimeoutEvent,
   WorkletPrepareGraphMessage,
-  WorkletRetireMessage,
   WorkletTelemetrySnapshot,
   WorkletUpdateMessage,
 } from "./workletGraphDelta";
@@ -113,9 +112,7 @@ import {
   PRODUCER_LIVENESS_ADVANCE_UNDERRUN,
   PRODUCER_LIVENESS_RESET,
   planProducerLiveness,
-  planWorkletGraph,
   shouldEnterProducerTimeout,
-  type WorkletGraphEdge,
 } from "./workletTransitionPlanning";
 
 // ---------------------------------------------------------------------------
@@ -142,8 +139,7 @@ const DEFAULT_AMP = 0.2;
 /**
  * Adapter factory the processor shell provides. Looks up a compiled
  * NodeDef adapter by `(name, version)`. Returns `null` when the module
- * has not been transferred yet (the core treats instantiate messages
- * for unknown defs as deferred).
+ * has not been transferred yet; graph preparation rejects unknown defs.
  *
  * The factory must not allocate on the hot path; it returns a cached
  * adapter constructed when {@link WorkletModuleTransferMessage} arrived.
@@ -274,7 +270,7 @@ interface InstanceState {
   /** Preallocated rollback image for one compute call. */
   stateSnapshot: Uint8Array;
   /** Adapter resolved at instantiate time. Cached for the hot path. */
-  adapter: NodeDefAdapter | null;
+  adapter: NodeDefAdapter;
   /** Active program epoch. Blocks whose epoch does not match are ignored. */
   epoch: number;
   /** Current fade stage. */
@@ -295,6 +291,8 @@ interface InstanceState {
   currentFreq: number;
   /** Most recently applied amplitude (param `amp`). Held on underrun. */
   currentAmp: number;
+  /** Mutable descriptor-ordered parameter vector for generic adapters. */
+  parameterValues: Array<{ name: string; value: number }>;
   /**
    * Prefilled param values that apply to the first matching-epoch
    * block only. Cleared after application so the steady-state path
@@ -312,7 +310,6 @@ interface InstanceState {
    */
   inputPtrs: number[];
   /** Staged input pointers, swapped in at epoch activation. */
-  pendingInputPtrs: number[] | null;
   /** Output zone pointer (all ports), or -1 when allocation failed. */
   outputZonePtr: number;
   /** Output zone byte length. */
@@ -321,14 +318,12 @@ interface InstanceState {
   outputView: Float64Array | null;
   /** True when no other instance consumes this instance's output. */
   isTerminal: boolean;
-  /** Staged terminal flag, swapped in at epoch activation. */
-  pendingIsTerminal: boolean;
   /**
    * Per-(node, param) block-rate SAB channel assignments (compiler
    * channel table, M2.2). Params without an entry are unbound: the
    * instance holds its prefill/default value for them.
    */
-  controlChannels: ReadonlyMap<string, number>;
+  controlChannels: ReadonlyMap<string, WorkletControlChannel>;
   /** One-shot guard for the missing-input-support diagnostic. */
   inputSupportWarned: boolean;
   /** True once the retire-sweep released this instance's zones. */
@@ -493,7 +488,6 @@ export function createWorkletCore(options: WorkletCoreOptions): WorkletCore {
   // --- Runtime state ---
   let controlView: SynthesisControlView | null = null;
   let controlBuffer: SharedArrayBuffer | null = null;
-  const adapters = new Map<string, NodeDefAdapter>();
   /**
    * Live rendering set in topological execution order. Includes
    * fading-out retirees until the sweep removes them.
@@ -501,10 +495,6 @@ export function createWorkletCore(options: WorkletCoreOptions): WorkletCore {
   let executionOrder: InstanceState[] = [];
   /** Newest instance per identity (fading def-change ancestors excluded). */
   const liveByIdentity = new Map<string, InstanceState>();
-  /** Staged instances awaiting their epoch block (not rendering yet). */
-  const staged = new Map<string, InstanceState>();
-  /** Precomputed post-activation execution order (swap at activation). */
-  let stagedOrder: InstanceState[] | null = null;
   let preparedCandidate: PreparedGraphCandidate | null = null;
   let committedCandidate: PreparedGraphCandidate | null = null;
   let committedCandidateEligible = false;
@@ -532,6 +522,8 @@ export function createWorkletCore(options: WorkletCoreOptions): WorkletCore {
   let peakSample = 0;
   let rmsSample = 0;
   let finiteOutput = 1;
+  let consecutiveDeadlineMisses = 0;
+  let overloadActive = false;
 
   // --- Precomputed fade frame counts (sample-rate derived) ---
   const fadeInFrames = Math.max(1, Math.round((SYNTH_FADE_IN_MS * sampleRate) / 1000));
@@ -540,6 +532,10 @@ export function createWorkletCore(options: WorkletCoreOptions): WorkletCore {
 
   // --- Emergency fade state ---
   let emergencyFadeFramesRemaining = 0;
+  let transportFadeFramesRemaining = 0;
+  let transportFadeFramesTotal = emergencyFadeFrames;
+  let transportFadeStart = 1;
+  let transportFadeEnd = 1;
 
   // Retained telemetry struct, mutated in place on every read. Steady-
   // state telemetry lives in the SAB header (written in process() step
@@ -602,85 +598,14 @@ export function createWorkletCore(options: WorkletCoreOptions): WorkletCore {
     options.publish(event);
   }
 
-  // -----------------------------------------------------------------------
-  // Graph planning (between quanta only)
-  // -----------------------------------------------------------------------
-
-  /** Resolve the instance an identity refers to for wiring purposes. */
-  function resolveSource(identity: string): InstanceState | null {
-    return staged.get(identity) ?? liveByIdentity.get(identity) ?? null;
-  }
-
-  /**
-   * Rebuild the pending graph plan: topological execution order over
-   * (live ∪ staged), per-instance input-port pointers, and terminal
-   * flags. Runs in the message handler (between quanta) so activation
-   * inside process() is a pure pointer/array swap.
-   *
-   * When nothing is staged, the plan applies immediately (still between
-   * quanta — a block boundary per VAL-ENGINE-009).
-   */
-  function rebuildGraphPlan(): void {
-    const union: InstanceState[] = [];
-    for (const inst of executionOrder) union.push(inst);
-    for (const inst of staged.values()) union.push(inst);
-
-    // --- Pure stable topological plan ---
-    const indexOf = new Map<InstanceState, number>();
-    for (let i = 0; i < union.length; i++) indexOf.set(union[i], i);
-    const edges: WorkletGraphEdge[] = [];
-    for (const inst of union) {
-      for (const w of inst.inputWiring) {
-        const src = resolveSource(w.sourceIdentity);
-        if (src && src !== inst && indexOf.has(src)) {
-          edges.push({
-            source: indexOf.get(src)!,
-            target: indexOf.get(inst)!,
-          });
-        }
-      }
-    }
-    const graphPlan = planWorkletGraph(union.length, edges);
-    const order = graphPlan.order.map((index) => union[index]);
-
-    // --- Input pointers + terminal flags ---
-    for (const inst of union) {
-      let maxPort = -1;
-      for (const w of inst.inputWiring) {
-        if (w.port > maxPort) maxPort = w.port;
-      }
-      const ptrs = new Array<number>(maxPort + 1).fill(silencePtr);
-      for (const w of inst.inputWiring) {
-        const src = resolveSource(w.sourceIdentity);
-        if (src && src !== inst && src.outputZonePtr >= 0) {
-          ptrs[w.port] =
-            src.outputZonePtr + w.sourcePort * zoneFrames * BYTES_PER_DOUBLE;
-        }
-      }
-      inst.pendingInputPtrs = ptrs;
-    }
-    for (let index = 0; index < union.length; index += 1) {
-      union[index].pendingIsTerminal = !graphPlan.consumed[index];
-    }
-
-    if (staged.size > 0) {
-      stagedOrder = order;
-    } else {
-      stagedOrder = null;
-      executionOrder = order;
-      applyPendingWiring();
-    }
-  }
-
-  /** Swap staged wiring into the live set (allocation-free). */
-  function applyPendingWiring(): void {
-    for (const inst of executionOrder) {
-      if (inst.pendingInputPtrs) {
-        inst.inputPtrs = inst.pendingInputPtrs;
-        inst.pendingInputPtrs = null;
-      }
-      inst.isTerminal = inst.pendingIsTerminal;
-    }
+  function publishWorkletTrap(identity: string): void {
+    const event: WorkletEngineFaultEvent = {
+      type: "engine-fault",
+      reason: "WORKLET_TRAP",
+      atBlock: blockCount,
+      identity,
+    };
+    publishEvent(event);
   }
 
   // -----------------------------------------------------------------------
@@ -692,23 +617,8 @@ export function createWorkletCore(options: WorkletCoreOptions): WorkletCore {
     const msg = message as { type?: string };
 
     switch (msg.type) {
-      case "nodedef-module":
-        handleModuleTransfer(msg as unknown as WorkletModuleTransferMessage);
-        break;
       case "attach-control-buffer":
         handleAttachControlBuffer(msg as unknown as WorkletAttachControlBufferMessage);
-        break;
-      case "detach-control-buffer":
-        handleDetachControlBuffer();
-        break;
-      case "instantiate":
-        handleInstantiate(msg as unknown as WorkletInstantiateMessage);
-        break;
-      case "update":
-        handleUpdate(msg as unknown as WorkletUpdateMessage);
-        break;
-      case "retire":
-        handleRetire(msg as unknown as WorkletRetireMessage);
         break;
       case "prepare-graph":
         handlePrepareGraph(msg as unknown as WorkletPrepareGraphMessage);
@@ -724,6 +634,24 @@ export function createWorkletCore(options: WorkletCoreOptions): WorkletCore {
         break;
       case "devmode-terminate-producer":
         handleDevmodeTerminateProducer();
+        break;
+      case "transport-pause":
+        transportFadeFramesRemaining = emergencyFadeFrames;
+        transportFadeFramesTotal = emergencyFadeFrames;
+        transportFadeStart = 1;
+        transportFadeEnd = 0;
+        break;
+      case "transport-resume":
+        transportFadeFramesRemaining = emergencyFadeFrames;
+        transportFadeFramesTotal = emergencyFadeFrames;
+        transportFadeStart = 0;
+        transportFadeEnd = 1;
+        break;
+      case "transport-stop":
+        transportFadeFramesRemaining = fadeOutFrames;
+        transportFadeFramesTotal = fadeOutFrames;
+        transportFadeStart = 1;
+        transportFadeEnd = 0;
         break;
       default:
         // Unknown message type: no-op (forward compatibility).
@@ -764,6 +692,7 @@ export function createWorkletCore(options: WorkletCoreOptions): WorkletCore {
         code: "nodedef-trap",
         identity: id.identity,
       });
+      publishWorkletTrap(id.identity);
       glitchCount += 1;
       return `NodeDef ${id.def}@${id.version} trapped during adapter creation`;
     }
@@ -794,6 +723,7 @@ export function createWorkletCore(options: WorkletCoreOptions): WorkletCore {
         code: "nodedef-trap",
         identity: id.identity,
       });
+      publishWorkletTrap(id.identity);
       glitchCount += 1;
     }
     if (!initOk) {
@@ -823,16 +753,18 @@ export function createWorkletCore(options: WorkletCoreOptions): WorkletCore {
       fadeGainEnd: 1,
       currentFreq: DEFAULT_FREQ,
       currentAmp: DEFAULT_AMP,
+      parameterValues: adapter.descriptor.params.map((param) => ({
+        name: param.name,
+        value: param.default,
+      })),
       prefill: buildPrefillMap(message.prefill),
       audioOutputs,
       inputWiring: message.audioInputs ?? EMPTY_WIRING,
       inputPtrs: EMPTY_PTRS,
-      pendingInputPtrs: null,
       outputZonePtr,
       outputZoneBytes,
       outputView,
       isTerminal: true,
-      pendingIsTerminal: true,
       controlChannels: buildControlChannelMap(message.controlChannels),
       inputSupportWarned: false,
       released: false,
@@ -1017,20 +949,10 @@ export function createWorkletCore(options: WorkletCoreOptions): WorkletCore {
       releaseCandidate(committedCandidate);
       committedCandidate = null;
       committedCandidateEligible = false;
-      pendingEpoch = staged.size > 0 ? pendingEpoch : 0;
+      pendingEpoch = 0;
       aborted = true;
     }
     transactionAck(message.transactionId, "abort", aborted, aborted ? undefined : "candidate not found");
-  }
-
-  function handleModuleTransfer(message: WorkletModuleTransferMessage): void {
-    const key = `${message.descriptor.name}@${message.descriptor.version}`;
-    const adapter = options.adapterFactory(message.descriptor.name, message.descriptor.version);
-    if (adapter !== null) {
-      adapters.set(key, adapter);
-    }
-    // If the adapter is not yet available (race with transfer), the
-    // instantiate handler will defer the delta until both arrive.
   }
 
   function handleAttachControlBuffer(message: WorkletAttachControlBufferMessage): void {
@@ -1057,310 +979,6 @@ export function createWorkletCore(options: WorkletCoreOptions): WorkletCore {
       return;
     }
     options.publish({ type: "attach-control-buffer-ack", ok: true });
-  }
-
-  function handleDetachControlBuffer(): void {
-    controlView = null;
-    controlBuffer = null;
-    // VAL-CROSS-009 recovery race: reset the bring-up window flags so
-    // the next attach cycle (recovery) starts fresh. Without this a
-    // detach/reattach pair would skip the bring-up window entirely.
-    sabEverAttached = false;
-    producerEverPublished = false;
-    // Retire every instance immediately (no fade): the SAB is gone, so
-    // further rendering is impossible. The processor shell disconnects
-    // the node so no further process() calls land. Zones are released
-    // silently (no instance-retired events on teardown).
-    for (const inst of executionOrder) {
-      retireImmediately(inst);
-      releaseInstanceZones(inst);
-    }
-    executionOrder.length = 0;
-    for (const inst of staged.values()) {
-      releaseInstanceZones(inst);
-    }
-    staged.clear();
-    stagedOrder = null;
-    if (preparedCandidate) releaseCandidate(preparedCandidate);
-    if (committedCandidate) releaseCandidate(committedCandidate);
-    preparedCandidate = null;
-    committedCandidate = null;
-    committedCandidateEligible = false;
-    liveByIdentity.clear();
-    activeEpoch = 0;
-    pendingEpoch = 0;
-  }
-
-  function handleInstantiate(message: WorkletInstantiateMessage): void {
-    const id = message.identity;
-    const live = liveByIdentity.get(id.identity);
-
-    // Same identity + same def/version on a live instance and no staged
-    // replacement: update-in-place. We keep the DSP instance and phase
-    // (VAL-DSP-010) and just refresh epoch/prefill/controls/wiring.
-    if (
-      live &&
-      live.def === id.def &&
-      live.version === id.version &&
-      !staged.has(id.identity)
-    ) {
-      live.epoch = id.epoch;
-      live.prefill = buildPrefillMap(message.prefill);
-      if (message.controlChannels) {
-        live.controlChannels = buildControlChannelMap(message.controlChannels);
-      }
-      if (message.audioInputs) {
-        live.inputWiring = message.audioInputs;
-        rebuildGraphPlan();
-      }
-      pendingEpoch = id.epoch;
-      return;
-    }
-
-    // Same identity with a DIFFERENT def/version: retire the old
-    // instance with a release fade (VAL-ENGINE-035). It keeps rendering
-    // in the execution order until its fade completes; the incoming
-    // instance is staged and activates on the next matching epoch
-    // block (overlapping fades per synth-nodes.md §5.7).
-    if (live && (live.def !== id.def || live.version !== id.version)) {
-      startFadeOut(live, fadeOutFrames);
-      liveByIdentity.delete(id.identity);
-    }
-
-    // A staged set armed for a DIFFERENT epoch is superseded by this
-    // delta (a newer commit won the race, VAL-ENGINE-013). Drop it and
-    // reclaim its zones before staging the new set.
-    if (staged.size > 0 && pendingEpoch !== 0 && id.epoch !== pendingEpoch) {
-      for (const inst of staged.values()) {
-        releaseInstanceZones(inst);
-      }
-      staged.clear();
-    }
-
-    // Resource limit (synthesis.md §3.5): live + staged instances are
-    // bounded by MAX_SYNTH_NODES. Breach is a diagnostic, never a
-    // glitch — the delta is refused and the running graph continues.
-    if (
-      !staged.has(id.identity) &&
-      executionOrder.length + staged.size >= MAX_SYNTH_NODES
-    ) {
-      publishEvent({
-        type: "graph-diagnostic",
-        code: "node-limit",
-        identity: id.identity,
-      });
-      return;
-    }
-
-    // Resolve the adapter. First check the cache (populated by
-    // {@link WorkletModuleTransferMessage}); if not cached, fall back
-    // to the injected factory. If neither yields an adapter the
-    // instance stays staged but silent until the module arrives.
-    const adapterKey = `${id.def}@${id.version}`;
-    let adapter = adapters.get(adapterKey) ?? null;
-    if (!adapter) {
-      try {
-        adapter = options.adapterFactory(id.def, id.version);
-      } catch {
-        publishEvent({
-          type: "graph-diagnostic",
-          code: "nodedef-trap",
-          identity: id.identity,
-        });
-        glitchCount += 1;
-        return;
-      }
-      if (adapter) {
-        adapters.set(adapterKey, adapter);
-      }
-    }
-
-    ensureSilenceZone();
-
-    // Allocate the state zone between quanta only.
-    let statePointer = message.statePointer;
-    let stateBytes = message.stateBytes;
-    let stateAllocatedHere = false;
-    if (statePointer === 0 || stateBytes === 0) {
-      // The host did not preallocate; allocate on its behalf using the
-      // adapter's declared state size. This is the between-quantum
-      // carve-out (synthesis.md §3.2).
-      if (adapter) {
-        stateBytes = adapter.descriptor.stateBytes;
-        statePointer = options.allocator.allocate(
-          stateBytes,
-          adapter.descriptor.stateAlign,
-        );
-        stateAllocatedHere = statePointer >= 0;
-        if (statePointer < 0) {
-          publishEvent({
-            type: "graph-diagnostic",
-            code: "zone-exhausted",
-            identity: id.identity,
-          });
-          return;
-        }
-      }
-    }
-
-    // Allocate the output zone (all ports). Zone exhaustion fails the
-    // delta closed with a diagnostic; the rest of the graph continues
-    // (synthesis.md §3.5).
-    const audioOutputs =
-      typeof message.audioOutputs === "number" && message.audioOutputs > 0
-        ? message.audioOutputs
-        : DEFAULT_AUDIO_OUTPUT_PORTS;
-    const outputZoneBytes = audioOutputs * zoneFrames * BYTES_PER_DOUBLE;
-    const outputZonePtr = options.allocator.allocate(outputZoneBytes, DOUBLE_ALIGN);
-    if (outputZonePtr < 0) {
-      if (stateAllocatedHere) {
-        try {
-          options.allocator.release(statePointer);
-        } catch {
-          // Best-effort cleanup.
-        }
-      }
-      publishEvent({
-        type: "graph-diagnostic",
-        code: "zone-exhausted",
-        identity: id.identity,
-      });
-      return;
-    }
-    const outputView = arenaView(outputZonePtr, audioOutputs * zoneFrames);
-    outputView.fill(0);
-    const stateView =
-      statePointer >= 0 && stateBytes > 0 ? arenaByteView(statePointer, stateBytes) : null;
-
-    const instance: InstanceState = {
-      identity: id.identity,
-      def: id.def,
-      version: id.version,
-      statePointer,
-      stateBytes,
-      stateView,
-      stateSnapshot: new Uint8Array(Math.max(0, stateBytes)),
-      adapter,
-      epoch: id.epoch,
-      lifecycle: "fade-in",
-      health: "ok",
-      retireAfterBlock: false,
-      fadeFramesRemaining: fadeInFrames,
-      fadeFramesTotal: fadeInFrames,
-      fadeGainStart: 0,
-      fadeGainEnd: 1,
-      currentFreq: DEFAULT_FREQ,
-      currentAmp: DEFAULT_AMP,
-      prefill: buildPrefillMap(message.prefill),
-      audioOutputs,
-      inputWiring: message.audioInputs ?? EMPTY_WIRING,
-      inputPtrs: EMPTY_PTRS,
-      pendingInputPtrs: null,
-      outputZonePtr,
-      outputZoneBytes,
-      outputView,
-      isTerminal: true,
-      pendingIsTerminal: true,
-      controlChannels: buildControlChannelMap(message.controlChannels),
-      inputSupportWarned: false,
-      released: false,
-      telemetryEntry: {
-        identity: id.identity,
-        def: id.def,
-        version: id.version,
-        statePointer,
-        lifecycle: "fade-in",
-        health: "ok",
-      },
-    };
-
-    // Initialise the DSP state zone between quanta. The adapter calls
-    // `init` against the host-owned memory; failure fails closed (the
-    // instance stays in `retired` and never renders).
-    if (adapter && statePointer >= 0 && stateBytes > 0) {
-      let ok = false;
-      try {
-        ok = adapter.init(statePointer, stateBytes);
-      } catch {
-        publishEvent({
-          type: "graph-diagnostic",
-          code: "nodedef-trap",
-          identity: id.identity,
-        });
-        glitchCount += 1;
-      }
-      if (!ok) {
-        instance.lifecycle = "retired";
-      }
-    } else if (!adapter) {
-      // Module not yet transferred; keep the instance staged but mark
-      // lifecycle as fade-in (it will activate once the adapter arrives
-      // — the renderer re-resolves per block, VAL-ENGINE-008).
-      instance.lifecycle = "fade-in";
-    } else {
-      instance.lifecycle = "retired";
-    }
-
-    // Warn once when the delta wires inputs into a def whose adapter
-    // has no input-capable compute entry point. The instance degrades
-    // to its input-less compute (typically silence), never a crash.
-    if (
-      adapter &&
-      instance.inputWiring.length > 0 &&
-      typeof adapter.computeWithInputs !== "function"
-    ) {
-      instance.inputSupportWarned = true;
-      publishEvent({
-        type: "graph-diagnostic",
-        code: "missing-input-support",
-        identity: id.identity,
-      });
-    }
-
-    staged.set(id.identity, instance);
-    pendingEpoch = id.epoch;
-    rebuildGraphPlan();
-  }
-
-  function handleUpdate(message: WorkletUpdateMessage): void {
-    const id = message.identity;
-    const live = liveByIdentity.get(id.identity);
-    if (!live || live.def !== id.def || live.version !== id.version) {
-      // No matching active instance. Late update from a superseded eval
-      // is a no-op (VAL-ENGINE-013).
-      return;
-    }
-    // Same def/version → update in place. Phase is preserved because
-    // we never call `reset_phase` here (VAL-DSP-010).
-    live.epoch = id.epoch;
-    live.prefill = buildPrefillMap(message.prefill);
-    if (message.controlChannels) {
-      live.controlChannels = buildControlChannelMap(message.controlChannels);
-    }
-    if (message.audioInputs) {
-      live.inputWiring = message.audioInputs;
-      rebuildGraphPlan();
-    }
-    pendingEpoch = id.epoch;
-  }
-
-  function handleRetire(message: WorkletRetireMessage): void {
-    const target = message.identity;
-    const live = liveByIdentity.get(target.identity);
-    if (live) {
-      // Begin the release fade; the post-fade sweep retires it fully
-      // and releases its zones (VAL-ENGINE-035).
-      startFadeOut(live, fadeOutFrames);
-      return;
-    }
-    const stagedInstance = staged.get(target.identity);
-    if (stagedInstance) {
-      // The staged instance never reached activation; drop it and
-      // reclaim its zones.
-      staged.delete(target.identity);
-      releaseInstanceZones(stagedInstance);
-      rebuildGraphPlan();
-    }
   }
 
   function handleDevmodeTerminateProducer(): void {
@@ -1441,15 +1059,11 @@ export function createWorkletCore(options: WorkletCoreOptions): WorkletCore {
       }
     });
 
-    // Staged wiring (if any) was computed against the old zones.
-    if (staged.size > 0) {
-      rebuildGraphPlan();
-    }
+
   }
 
   function forEachInstance(fn: (inst: InstanceState) => void): void {
     for (const inst of executionOrder) fn(inst);
-    for (const inst of staged.values()) fn(inst);
   }
 
   // -----------------------------------------------------------------------
@@ -1457,6 +1071,7 @@ export function createWorkletCore(options: WorkletCoreOptions): WorkletCore {
   // -----------------------------------------------------------------------
 
   function process(requestedFrameCount: number): WorkletTelemetrySnapshot {
+    const processStartedAt = options.now?.() ?? Date.now();
     blockCount += 1;
 
     // Bound the quantum by the ABI's validation ceiling so zone sizes
@@ -1605,30 +1220,6 @@ export function createWorkletCore(options: WorkletCoreOptions): WorkletCore {
       } else if (consumedBlockEpoch !== 0) {
         hasBlock = false;
       }
-    } else if (staged.size > 0 && hasBlock) {
-      if (consumedBlockEpoch === pendingEpoch && pendingEpoch !== 0) {
-        if (stagedOrder) {
-          executionOrder = stagedOrder;
-          stagedOrder = null;
-        }
-        applyPendingWiring();
-        for (const inst of staged.values()) {
-          liveByIdentity.set(inst.identity, inst);
-          const activatedEvent: WorkletGraphActivatedEvent = {
-            type: "graph-activated",
-            identity: inst.identity,
-            epoch: pendingEpoch,
-            atBlock: blockCount,
-          };
-          publishEvent(activatedEvent);
-        }
-        staged.clear();
-        activeEpoch = pendingEpoch;
-      } else if (consumedBlockEpoch !== 0 && consumedBlockEpoch !== pendingEpoch) {
-        // Stale or mismatched block: do not render (VAL-ENGINE-012).
-        // We hold the last values and let the producer catch up.
-        hasBlock = false;
-      }
     }
 
     // ---- Step 4: If a control block was acquired, advance the read index ----
@@ -1670,7 +1261,19 @@ export function createWorkletCore(options: WorkletCoreOptions): WorkletCore {
     }
 
     // ---- Step 6: Apply emergency fade if producer has timed out ----
-    if (producerTimeoutActive && emergencyFadeFramesRemaining > 0) {
+    if (transportFadeFramesRemaining > 0) {
+      const total = transportFadeFramesTotal;
+      const elapsed = total - transportFadeFramesRemaining;
+      const count = Math.min(frameCount, transportFadeFramesRemaining);
+      for (let i = 0; i < frameCount; i++) {
+        const progress = Math.min(1, (elapsed + i) / Math.max(1, total - 1));
+        const gain = transportFadeStart + (transportFadeEnd - transportFadeStart) * progress;
+        outputMixScratch[i] *= gain;
+      }
+      transportFadeFramesRemaining -= count;
+      if (transportFadeFramesRemaining === 0 && transportFadeEnd === 0) outputMixScratch.fill(0);
+    }
+    if ((producerTimeoutActive || overloadActive) && emergencyFadeFramesRemaining > 0) {
       const remaining = emergencyFadeFramesRemaining;
       const total = emergencyFadeFrames;
       // Linear fade from current → 0 across the remaining frames.
@@ -1688,7 +1291,7 @@ export function createWorkletCore(options: WorkletCoreOptions): WorkletCore {
           outputMixScratch[i] = 0;
         }
       }
-    } else if (producerTimeoutActive) {
+    } else if (producerTimeoutActive || overloadActive) {
       // Past the fade: hard zero.
       outputMixScratch.fill(0);
     }
@@ -1778,8 +1381,26 @@ export function createWorkletCore(options: WorkletCoreOptions): WorkletCore {
       write += 1;
     }
     executionOrder.length = write;
-    if (executionOrder.length === 0 && staged.size === 0) {
+    if (executionOrder.length === 0 && !committedCandidate) {
       activeEpoch = 0;
+    }
+
+    const elapsedMs = (options.now?.() ?? Date.now()) - processStartedAt;
+    if (elapsedMs > (frameCount / sampleRate) * 1000) {
+      consecutiveDeadlineMisses += 1;
+      if (consecutiveDeadlineMisses >= OVERLOAD_BLOCKS && !overloadActive) {
+        overloadActive = true;
+        emergencyFadeFramesRemaining = emergencyFadeFrames;
+        const event: WorkletEngineFaultEvent = {
+          type: "engine-fault",
+          reason: "OVERLOAD",
+          atBlock: blockCount,
+          consecutiveMisses: consecutiveDeadlineMisses,
+        };
+        publishEvent(event);
+      }
+    } else {
+      consecutiveDeadlineMisses = 0;
     }
 
     return refreshTelemetry();
@@ -1798,72 +1419,8 @@ export function createWorkletCore(options: WorkletCoreOptions): WorkletCore {
     consumedBlockEpoch: number,
     frameCount: number,
   ): void {
-    let adapter = instance.adapter;
-    if (!adapter) {
-      // VAL-ENGINE-008 race: the instantiate delta may have arrived
-      // before the nodedef-module transfer completed (both are async
-      // postMessages). The worklet core's adapter cache may have been
-      // populated since the instance was staged. Re-resolve from the
-      // cache (and the factory) on every render so the instance
-      // activates as soon as the module lands, without a second
-      // instantiate round-trip.
-      const adapterKey = `${instance.def}@${instance.version}`;
-      adapter = adapters.get(adapterKey) ?? null;
-      if (!adapter) {
-        try {
-          adapter = options.adapterFactory(instance.def, instance.version);
-        } catch {
-          publishEvent({
-            type: "graph-diagnostic",
-            code: "nodedef-trap",
-            identity: instance.identity,
-          });
-          glitchCount += 1;
-          instance.lifecycle = "retired";
-          instance.outputView?.fill(0);
-          return;
-        }
-        if (adapter) {
-          adapters.set(adapterKey, adapter);
-        }
-      }
-      if (adapter) {
-        instance.adapter = adapter;
-        // The instance was staged without an adapter; its state zone
-        // was not allocated at instantiate time. Allocate and
-        // initialise it now (a graph-mutation boundary) so the first
-        // render produces sound. Without this, statePointer stays at 0
-        // and the WASM compute reads/writes the wrong memory region,
-        // producing silence or garbage.
-        if (instance.statePointer === 0 || instance.stateBytes === 0) {
-          instance.stateBytes = adapter.descriptor.stateBytes;
-          instance.statePointer = options.allocator.allocate(
-            instance.stateBytes,
-            adapter.descriptor.stateAlign,
-          );
-        }
-        if (instance.statePointer >= 0 && instance.stateBytes > 0) {
-          let initOk = false;
-          try {
-            initOk = adapter.init(instance.statePointer, instance.stateBytes);
-          } catch {
-            publishEvent({
-              type: "graph-diagnostic",
-              code: "nodedef-trap",
-              identity: instance.identity,
-            });
-            glitchCount += 1;
-          }
-          if (!initOk) {
-            instance.lifecycle = "retired";
-            return;
-          }
-          instance.stateView = arenaByteView(instance.statePointer, instance.stateBytes);
-          instance.stateSnapshot = new Uint8Array(instance.stateBytes);
-        }
-      }
-    }
-    if (!adapter || instance.statePointer < 0 || !instance.outputView || instance.outputZonePtr < 0) {
+    const adapter = instance.adapter;
+    if (instance.statePointer < 0 || !instance.outputView || instance.outputZonePtr < 0) {
       // Module not yet transferred or zone invalid: hold silence in the
       // zone so downstream consumers never read stale samples.
       if (instance.outputView) {
@@ -1877,9 +1434,27 @@ export function createWorkletCore(options: WorkletCoreOptions): WorkletCore {
     // assignment, synth-nodes.md §7.2). Unbound params never touch the
     // SAB: the instance holds its prefill/default value (§3.3).
     if (hasBlock && controlView) {
+      if (typeof adapter.computeWithParams === "function") {
+        for (let i = 0; i < adapter.descriptor.params.length; i++) {
+          const descriptor = adapter.descriptor.params[i];
+          const channel = instance.controlChannels.get(descriptor.name);
+          if (channel === undefined || channel.rate !== "block" ||
+              channel.channel >= controlView.blockRateCount) continue;
+          let value = controlView.readBlockRateValue(physicalSlot, channel.channel);
+          if (!Number.isFinite(value)) {
+            value = descriptor.default;
+            glitchCount += 1;
+          }
+          const max = descriptor.name === "freq"
+            ? Math.min(descriptor.max ?? Infinity, sampleRate / 2)
+            : descriptor.max ?? Infinity;
+          value = Math.max(descriptor.min ?? -Infinity, Math.min(max, value));
+          instance.parameterValues[i].value = value;
+        }
+      }
       const freqChannel = instance.controlChannels.get("freq");
-      if (freqChannel !== undefined && freqChannel < controlView.blockRateCount) {
-        let controlFreq = controlView.readBlockRateValue(physicalSlot, freqChannel);
+      if (freqChannel?.rate === "block" && freqChannel.channel < controlView.blockRateCount) {
+        let controlFreq = controlView.readBlockRateValue(physicalSlot, freqChannel.channel);
         // Validate: non-finite values clamp to the registry default and
         // increment the glitch counter.
         if (!Number.isFinite(controlFreq)) {
@@ -1893,8 +1468,8 @@ export function createWorkletCore(options: WorkletCoreOptions): WorkletCore {
         instance.currentFreq = controlFreq;
       }
       const ampChannel = instance.controlChannels.get("amp");
-      if (ampChannel !== undefined && ampChannel < controlView.blockRateCount) {
-        let controlAmp = controlView.readBlockRateValue(physicalSlot, ampChannel);
+      if (ampChannel?.rate === "block" && ampChannel.channel < controlView.blockRateCount) {
+        let controlAmp = controlView.readBlockRateValue(physicalSlot, ampChannel.channel);
         if (!Number.isFinite(controlAmp)) {
           controlAmp = DEFAULT_AMP;
           glitchCount += 1;
@@ -1913,6 +1488,11 @@ export function createWorkletCore(options: WorkletCoreOptions): WorkletCore {
       const amp = instance.prefill.get("amp");
       if (typeof freq === "number" && Number.isFinite(freq)) instance.currentFreq = freq;
       if (typeof amp === "number" && Number.isFinite(amp)) instance.currentAmp = amp;
+      for (let i = 0; i < instance.parameterValues.length; i++) {
+        const entry = instance.parameterValues[i];
+        const value = instance.prefill.get(entry.name);
+        if (typeof value === "number" && Number.isFinite(value)) entry.value = value;
+      }
       instance.prefill = null; // Single-shot; steady-state reads SAB.
     }
 
@@ -1940,7 +1520,74 @@ export function createWorkletCore(options: WorkletCoreOptions): WorkletCore {
     let failureCode: "nodedef-trap" | "nodedef-compute-rejected" | "nodedef-nonfinite-output" =
       "nodedef-compute-rejected";
     try {
-      if (instance.inputPtrs.length > 0 && typeof adapter.computeWithInputs === "function") {
+      let hasFrameControls = false;
+      if (hasBlock && controlView) {
+        for (const channel of instance.controlChannels.values()) {
+          if (channel.rate === "fast" || channel.rate === "event") {
+            hasFrameControls = true;
+            break;
+          }
+        }
+      }
+      if (hasFrameControls && controlView) {
+        ok = true;
+        for (let frame = 0; frame < frameCount && ok; frame += 1) {
+          for (let paramIndex = 0; paramIndex < adapter.descriptor.params.length; paramIndex += 1) {
+            const descriptor = adapter.descriptor.params[paramIndex]!;
+            const channel = instance.controlChannels.get(descriptor.name);
+            if (!channel) continue;
+            let value = instance.parameterValues[paramIndex]?.value ?? descriptor.default;
+            if (channel.rate === "fast" && channel.channel < controlView.fastRateCount) {
+              const pointPosition = frameCount <= 1 ? 0
+                : frame * (controlView.fastPointsPerBlock - 1) / (frameCount - 1);
+              const lowerPoint = Math.floor(pointPosition);
+              const upperPoint = Math.min(controlView.fastPointsPerBlock - 1, lowerPoint + 1);
+              const lowerValue = controlView.readFastRateValue(physicalSlot, channel.channel, lowerPoint);
+              const upperValue = controlView.readFastRateValue(physicalSlot, channel.channel, upperPoint);
+              const blend = channel.smoothing === "linear"
+                ? pointPosition - lowerPoint
+                : 0;
+              value = lowerValue + (upperValue - lowerValue) * blend;
+            } else if (channel.rate === "event" && channel.channel < controlView.eventChannelCount) {
+              const count = controlView.eventCount(physicalSlot, channel.channel);
+              for (let edge = 0; edge < count; edge += 1) {
+                const event = controlView.readEvent(physicalSlot, channel.channel, edge);
+                if (event.frameOffset === frame) value = event.value;
+              }
+            } else if (channel.rate === "block" && channel.channel < controlView.blockRateCount) {
+              value = controlView.readBlockRateValue(physicalSlot, channel.channel);
+            }
+            if (!Number.isFinite(value)) value = descriptor.default;
+            value = Math.max(descriptor.min ?? -Infinity,
+              Math.min(descriptor.max ?? Infinity, value));
+            const parameter = instance.parameterValues[paramIndex];
+            if (parameter) parameter.value = value;
+            if (descriptor.name === "freq") instance.currentFreq = Math.max(0,
+              Math.min(sampleRate / 2, value));
+            if (descriptor.name === "amp") instance.currentAmp = Math.max(0,
+              Math.min(1, value));
+          }
+          freqControlScratch[0] = instance.currentFreq;
+          ampControlScratch[0] = instance.currentAmp;
+          const frameOutputPtr = instance.outputZonePtr + frame * Float64Array.BYTES_PER_ELEMENT;
+          if (typeof adapter.computeWithParams === "function") {
+            ok = adapter.computeWithParams(
+              instance.statePointer, instance.parameterValues, frameOutputPtr, 1,
+            );
+          } else {
+            ok = adapter.compute(
+              instance.statePointer, freqPtr, ampPtr, frameOutputPtr, 1,
+            );
+          }
+        }
+      } else if (typeof adapter.computeWithParams === "function") {
+        ok = adapter.computeWithParams(
+          instance.statePointer,
+          instance.parameterValues,
+          instance.outputZonePtr,
+          frameCount,
+        );
+      } else if (instance.inputPtrs.length > 0 && typeof adapter.computeWithInputs === "function") {
         ok = adapter.computeWithInputs(
           instance.statePointer,
           instance.inputPtrs,
@@ -1995,6 +1642,9 @@ export function createWorkletCore(options: WorkletCoreOptions): WorkletCore {
         code: failureCode,
         identity: instance.identity,
       });
+      // A live-node trap is contained by the failure-atomic path above.
+      // The graph diagnostic is the observable failure; it must not be
+      // escalated to a whole-engine fault (synthesis.md §3.6).
       applyFadeEnvelope(instance, frameCount);
       return;
     }
@@ -2065,13 +1715,6 @@ export function createWorkletCore(options: WorkletCoreOptions): WorkletCore {
     instance.fadeGainEnd = 0;
   }
 
-  function retireImmediately(instance: InstanceState): void {
-    instance.lifecycle = "retired";
-    instance.retireAfterBlock = false;
-    instance.fadeFramesRemaining = 0;
-    instance.fadeFramesTotal = 0;
-  }
-
   /**
    * Repoint every consumer whose input pointer targets the retiring
    * instance's output zone at the silence zone. Runs in the sweep,
@@ -2089,13 +1732,7 @@ export function createWorkletCore(options: WorkletCoreOptions): WorkletCore {
           other.inputPtrs[i] = silencePtr;
         }
       }
-      if (other.pendingInputPtrs) {
-        for (let i = 0; i < other.pendingInputPtrs.length; i++) {
-          if (other.pendingInputPtrs[i] >= lo && other.pendingInputPtrs[i] < hi) {
-            other.pendingInputPtrs[i] = silencePtr;
-          }
-        }
-      }
+
     });
   }
 
@@ -2130,11 +1767,8 @@ export function createWorkletCore(options: WorkletCoreOptions): WorkletCore {
   function reset(): void {
     controlView = null;
     controlBuffer = null;
-    adapters.clear();
     executionOrder = [];
     liveByIdentity.clear();
-    staged.clear();
-    stagedOrder = null;
     if (preparedCandidate) releaseCandidate(preparedCandidate);
     if (committedCandidate) releaseCandidate(committedCandidate);
     preparedCandidate = null;
@@ -2159,6 +1793,8 @@ export function createWorkletCore(options: WorkletCoreOptions): WorkletCore {
     rmsSample = 0;
     finiteOutput = 1;
     emergencyFadeFramesRemaining = 0;
+    consecutiveDeadlineMisses = 0;
+    overloadActive = false;
   }
 
   // -----------------------------------------------------------------------
@@ -2199,7 +1835,7 @@ export function createWorkletCore(options: WorkletCoreOptions): WorkletCore {
 /** Shared empty wiring/pointer singletons (never mutated). */
 const EMPTY_WIRING: readonly WorkletAudioInputWiring[] = Object.freeze([]);
 const EMPTY_PTRS: number[] = [];
-const EMPTY_CONTROL_CHANNELS: ReadonlyMap<string, number> = new Map();
+const EMPTY_CONTROL_CHANNELS: ReadonlyMap<string, WorkletControlChannel> = new Map();
 
 /**
  * Build the per-(node, param) channel map from a delta message's
@@ -2208,12 +1844,16 @@ const EMPTY_CONTROL_CHANNELS: ReadonlyMap<string, number> = new Map();
  */
 function buildControlChannelMap(
   channels: readonly WorkletControlChannel[] | undefined,
-): ReadonlyMap<string, number> {
+): ReadonlyMap<string, WorkletControlChannel> {
   if (!channels || channels.length === 0) return EMPTY_CONTROL_CHANNELS;
-  const map = new Map<string, number>();
+  const map = new Map<string, WorkletControlChannel>();
   for (const entry of channels) {
     if (Number.isInteger(entry.channel) && entry.channel >= 0) {
-      map.set(entry.param, entry.channel);
+      map.set(entry.param, {
+        ...entry,
+        rate: entry.rate ?? "block",
+        smoothing: entry.smoothing ?? "step",
+      });
     }
   }
   return map;

@@ -15,7 +15,7 @@
  * and emits the ordered list of worklet messages + the Worker arm-epoch
  * call. It performs no I/O and touches no singletons.
  */
-import { describe, expect, it, beforeEach } from "vitest";
+import { describe, expect, it } from "vitest";
 
 import {
   allocateEpoch,
@@ -334,10 +334,6 @@ describe("engineCommitCoordinator — worklet delta ordering (VAL-ENGINE-010)", 
   });
 
   it("emits no deltas for an empty diff (no-op)", () => {
-    const prior: ActiveDeclaration[] = [
-      { identity: "lead", def: "osc/sine", version: 2 },
-    ];
-    const diff = buildGraphDiff(prior, [oscSineDeclaration("lead")]);
     // Update-in-place is represented; force empty by filtering.
     const emptyDiff = {
       added: [],
@@ -391,16 +387,16 @@ describe("engineCommitCoordinator — multi-node deltas (M2.2)", () => {
     const channelsFor = (identity: string) =>
       instantiates.find((d) => d.identity.identity === identity)?.controlChannels;
     expect(channelsFor("id-a")).toEqual([
-      { param: "freq", channel: 0 },
-      { param: "amp", channel: 1 },
+      { param: "freq", channel: 0, rate: "block", smoothing: "step" },
+      { param: "amp", channel: 1, rate: "block", smoothing: "linear" },
     ]);
     expect(channelsFor("id-b")).toEqual([
-      { param: "freq", channel: 2 },
-      { param: "amp", channel: 3 },
+      { param: "freq", channel: 2, rate: "block", smoothing: "step" },
+      { param: "amp", channel: 3, rate: "block", smoothing: "linear" },
     ]);
     expect(channelsFor("id-c")).toEqual([
-      { param: "freq", channel: 4 },
-      { param: "amp", channel: 5 },
+      { param: "freq", channel: 4, rate: "block", smoothing: "step" },
+      { param: "amp", channel: 5, rate: "block", smoothing: "linear" },
     ]);
     plan.layout.channels.forEach((entry, index) => {
       expect(entry.channel).toBe(index);
@@ -427,7 +423,7 @@ describe("engineCommitCoordinator — multi-node deltas (M2.2)", () => {
       { identity: "id-b", param: "amp", compilerControlIndex: 2, channel: 2 },
     ]);
     expect(plan.layout.channelsByIdentity.get("id-a")).toEqual([
-      { param: "freq", channel: 0 },
+      { param: "freq", channel: 0, rate: "block", smoothing: "step" },
     ]);
   });
 
@@ -455,8 +451,8 @@ describe("engineCommitCoordinator — multi-node deltas (M2.2)", () => {
       { identity: "id-a", param: "amp", compilerControlIndex: 3 },
     ]);
     expect(plan.layout.channelsByIdentity.get("id-a")).toEqual([
-      { param: "freq", channel: 1 },
-      { param: "amp", channel: 3 },
+      { param: "freq", channel: 1, rate: "block", smoothing: "step" },
+      { param: "amp", channel: 3, rate: "block", smoothing: "linear" },
     ]);
   });
 
@@ -517,12 +513,12 @@ describe("engineCommitCoordinator — multi-node deltas (M2.2)", () => {
     const channelsFor = (identity: string) =>
       updates.find((d) => d.identity.identity === identity)?.controlChannels;
     expect(channelsFor("id-b")).toEqual([
-      { param: "freq", channel: 0 },
-      { param: "amp", channel: 1 },
+      { param: "freq", channel: 0, rate: "block", smoothing: "step" },
+      { param: "amp", channel: 1, rate: "block", smoothing: "linear" },
     ]);
     expect(channelsFor("id-a")).toEqual([
-      { param: "freq", channel: 2 },
-      { param: "amp", channel: 3 },
+      { param: "freq", channel: 2, rate: "block", smoothing: "step" },
+      { param: "amp", channel: 3, rate: "block", smoothing: "linear" },
     ]);
     // Wiring travels with the update: id-a gains its edge; id-b, with
     // no incoming edges, receives an explicit empty array (disconnect).

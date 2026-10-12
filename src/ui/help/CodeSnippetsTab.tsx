@@ -100,6 +100,7 @@ export const CodeSnippetsTab: Component<CodeSnippetsTabProps> = (props) => {
                 <button 
                   class="code-snippet-filter-tag" 
                   classList={{ selected: selectedTags().has(tag) }}
+                  aria-pressed={selectedTags().has(tag)}
                   onClick={() => toggleTag(tag)}
                 >
                   {tag}

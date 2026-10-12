@@ -11,20 +11,24 @@
  *   - On the field's initial creation, parse from scratch with the doc's
  *     primary CodeMirror selection mapped to the smallest enclosing top-level
  *     form, falling back to the document root.
- *   - On every doc-changing transaction, re-parse from the new doc text and
- *     re-derive cursors from the previously-saved paths.
+ *   - On text edits, fold the new document once and resolve the mutation
+ *     transaction's intended focus, falling back to saved paths for text input.
  *   - Other dispatches that just want to update the cursor (e.g. nav ops)
  *     pass `setStructState` effect carrying the new core state.
  */
 
 import { StateEffect, StateField } from "@codemirror/state";
 import type { EditorState, Transaction } from "@codemirror/state";
+import { invertedEffects } from "@codemirror/commands";
 
 import { nodeCursor, singleCursor, type State } from "../core/index.ts";
 import {
   pathsFromCursorSet,
   rederiveCursors,
   type CursorPath,
+  captureStructuralFocus,
+  resolveStructuralFocus,
+  type StructuralFocus,
 } from "./cursorPath.ts";
 import { treeFromLezer, type IdIndex } from "./treeFromLezer.ts";
 
@@ -38,12 +42,15 @@ export interface StructFieldValue {
   readonly cursorPaths: ReadonlyArray<CursorPath>;
 }
 
-/** Effect carrying a new core state after a nav/mutation op. */
+/** Effect carrying a new core state after navigation or selection projection. */
 export const setStructState = StateEffect.define<{
   state: State;
   idIndex: IdIndex;
   cursorPaths: ReadonlyArray<CursorPath>;
 }>();
+
+/** Applied with the text edit, so observers never see text with the old focus. */
+export const setIntendedFocus = StateEffect.define<StructuralFocus>();
 
 function initialFromDoc(es: EditorState): StructFieldValue {
   const { tree, idIndex } = treeFromLezer(es);
@@ -61,6 +68,14 @@ function initialFromDoc(es: EditorState): StructFieldValue {
 export const structField = StateField.define<StructFieldValue>({
   create: initialFromDoc,
   update(value, tr: Transaction): StructFieldValue {
+    const intended = tr.effects.find((effect) => effect.is(setIntendedFocus));
+    if (intended?.is(setIntendedFocus)) {
+      const { tree, idIndex } = tr.docChanged ? treeFromLezer(tr.state) : {
+        tree: value.state.tree, idIndex: value.idIndex,
+      };
+      const cursors = resolveStructuralFocus(intended.value, tree);
+      return { state: { tree, cursors }, idIndex, cursorPaths: pathsFromCursorSet(cursors, tree) };
+    }
     // Effects always win over doc-change re-parse; an op may have produced
     // a new state plus the matching text edit in the same transaction.
     for (const e of tr.effects) {
@@ -84,6 +99,11 @@ export const structField = StateField.define<StructFieldValue>({
     }
     return value;
   },
+  provide: (field) => invertedEffects.of((tr) =>
+    tr.docChanged && tr.effects.some((effect) => effect.is(setIntendedFocus))
+      ? [setIntendedFocus.of(captureStructuralFocus(tr.startState.field(field).state))]
+      : [],
+  ),
 });
 
 // ─── Insertion mode (§4 mode boundary) ──────────────────────────────────────
@@ -100,24 +120,6 @@ export const insertionModeField = StateField.define<boolean>({
   update(value, tr: Transaction): boolean {
     for (const e of tr.effects) {
       if (e.is(setInsertionMode)) return e.value;
-    }
-    return value;
-  },
-});
-
-// ─── Grab mode (gamepad.md §6.6.4) ────────────────────────────────────────
-//
-// Boolean state field: true when the editor is in grab mode (node is being
-// moved via D-pad). Used by the overlay plugin to change the cursor polygon
-// colour. The actual grab state (move count, etc.) lives in grabState.ts.
-
-export const setGrabMode = StateEffect.define<boolean>();
-
-export const grabModeField = StateField.define<boolean>({
-  create: () => false,
-  update(value, tr: Transaction): boolean {
-    for (const e of tr.effects) {
-      if (e.is(setGrabMode)) return e.value;
     }
     return value;
   },

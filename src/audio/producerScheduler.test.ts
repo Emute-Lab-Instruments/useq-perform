@@ -40,7 +40,7 @@
  * import did not resolve) and pass after the canonical scheduler
  * lands.
  */
-import { describe, expect, it, beforeEach, vi } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
 import {
   ABI_VERSION,
@@ -74,13 +74,17 @@ import {
 function createFakeClock(): ProducerSchedulingClock & {
   tick(ms: number): void;
   now(): number;
+  sleepCalls(): number;
 } {
   let t = 0;
+  let sleeps = 0;
   return {
     now: () => t,
     sleep(ms: number): void {
+      sleeps += 1;
       t += ms;
     },
+    sleepCalls: () => sleeps,
     tick(ms: number): void {
       t += ms;
     },
@@ -150,8 +154,11 @@ function buildScheduler(opts: {
   clock?: ProducerSchedulingClock;
   executor?: ProducerExecutor;
   blockRateChannels?: ReadonlyArray<string>;
+  fastRateBindings?: ProducerSchedulerOptions["fastRateBindings"];
+  eventBindings?: ProducerSchedulerOptions["eventBindings"];
   lookaheadBlocks?: number;
   renderQuantumFrames?: number;
+  audit?: boolean;
 } = {}): {
   scheduler: ProducerScheduler;
   clock: ReturnType<typeof createFakeClock>;
@@ -171,9 +178,11 @@ function buildScheduler(opts: {
     view,
     map,
     blockRateChannels: opts.blockRateChannels ?? ["freq", "amp"],
+    ...(opts.fastRateBindings ? { fastRateBindings: opts.fastRateBindings } : {}),
+    ...(opts.eventBindings ? { eventBindings: opts.eventBindings } : {}),
     lookaheadBlocks: opts.lookaheadBlocks ?? CONTROL_LOOKAHEAD_BLOCKS,
     renderQuantumFrames: opts.renderQuantumFrames ?? DEFAULT_RENDER_QUANTUM_FRAMES,
-    audit,
+    ...(opts.audit !== false ? { audit } : {}),
   };
   const scheduler = createProducerScheduler(schedulerOpts);
   return { scheduler, clock, executor, view, map, audit };
@@ -184,6 +193,56 @@ function buildScheduler(opts: {
 // ---------------------------------------------------------------------------
 
 describe("producerScheduler / lookahead publication (VAL-ENGINE-004)", () => {
+  it("publishes fast control points and frame-indexed latch edges", () => {
+    const executor: ProducerExecutor = {
+      liveTick: () => ({ freq: 440, amp: 0.2 }),
+      sampleSynthControls(indices, times) {
+        const values = new Float64Array(indices.length * times.length);
+        for (let row = 0; row < indices.length; row += 1) {
+          for (let sample = 0; sample < times.length; sample += 1) {
+            values[row * times.length + sample] = indices[row] === 2
+              ? sample
+              : Number(sample >= 32 && sample < 35);
+          }
+        }
+        return values;
+      },
+    };
+    const { scheduler, view, map } = buildScheduler({
+      executor,
+      fastRateBindings: [{ channelKey: "fast", compilerControlIndex: 2 }],
+      eventBindings: [{ channelKey: "gate", compilerControlIndex: 3 }],
+    });
+    map.start({ atFrame: 0n, atTime: 0 });
+    scheduler.start();
+    view.publishAudioFrame({ frame: 1n, blockFrameOffset: 1 });
+    scheduler.iterate();
+
+    const points = Array.from({ length: view.fastPointsPerBlock }, (_, point) =>
+      view.readFastRateValue(0, 0, point),
+    );
+    expect(points).toEqual(Array.from({ length: view.fastPointsPerBlock }, (_, i) => i));
+    expect(view.eventCount(0, 0)).toBe(2);
+    expect(view.readEvent(0, 0, 0)).toEqual({ value: 1, frameOffset: 32 });
+    expect(view.readEvent(0, 0, 1)).toEqual({ value: 0, frameOffset: 35 });
+    scheduler.stop();
+  });
+
+  it("reports published blocks without retaining production audit records", () => {
+    const { scheduler, view, map, audit, clock } = buildScheduler({ audit: false });
+    map.start({ atFrame: 0n, atTime: 0 });
+
+    expect(scheduler.iterate()).toBe(0);
+    scheduler.start();
+    view.publishAudioFrame({ frame: 1n, blockFrameOffset: 1 });
+
+    expect(scheduler.iterate()).toBe(CONTROL_LOOKAHEAD_BLOCKS);
+    expect(audit).toHaveLength(0);
+    expect(scheduler.iterate()).toBe(0);
+    expect(clock.sleepCalls()).toBe(1);
+    scheduler.stop();
+  });
+
   it("publishes CONTROL_LOOKAHEAD_BLOCKS ahead of the current audio frame", () => {
     const { scheduler, view, map } = buildScheduler();
     map.start({ atFrame: 0n, atTime: 0 });
@@ -197,6 +256,20 @@ describe("producerScheduler / lookahead publication (VAL-ENGINE-004)", () => {
     // the ring (write index advanced by that many).
     expect(view.ringWriteIndex).toBe(CONTROL_LOOKAHEAD_BLOCKS);
     scheduler.stop();
+  });
+
+  it("drops stale queued blocks and refills after a transport reanchor", () => {
+    const { scheduler, view, map } = buildScheduler();
+    map.start({ atFrame: 0n, atTime: 0 });
+    scheduler.start();
+    view.publishAudioFrame({ frame: 1n, blockFrameOffset: 1 });
+    scheduler.iterate();
+    expect(view.ringFillDepth()).toBe(CONTROL_LOOKAHEAD_BLOCKS);
+    scheduler.reanchor();
+    expect(view.ringFillDepth()).toBe(0);
+    map.reanchor({ atFrame: 1n, atTime: 2 });
+    expect(scheduler.iterate()).toBe(CONTROL_LOOKAHEAD_BLOCKS);
+    expect(view.ringFillDepth()).toBe(CONTROL_LOOKAHEAD_BLOCKS);
   });
 
   it("keeps the ring horizon bounded by CONTROL_LOOKAHEAD_BLOCKS + slack", () => {
@@ -296,6 +369,7 @@ describe("producerScheduler / responsiveness bound (VAL-ENGINE-006)", () => {
       scheduler.processInbox(() => {
         // Simulated message handling.
         clock.tick(2);
+        return false;
       });
       view.publishAudioFrame({
         frame: 1n + BigInt((i + 1) * DEFAULT_RENDER_QUANTUM_FRAMES),

@@ -9,14 +9,14 @@
  * measurements typically return null/0 in jsdom, so the polygon `<path>`
  * elements may not actually render with valid `d` attributes. We assert the
  * overlay element + the bracket-suppression class only — the polygon
- * geometry is exercised in the browser via Inspector scenarios. Don't fight
+ * geometry is exercised in the browser via Storybook stories. Don't fight
  * the test environment.
  */
 
 import { describe, expect, it } from "vitest";
 import { EditorState } from "@codemirror/state";
 import { EditorView } from "@codemirror/view";
-// @ts-expect-error — clojure-mode has no type declarations
+
 import { default_extensions } from "@nextjournal/clojure-mode";
 
 import { structuralCoreExtensions } from "../extension.ts";
@@ -36,12 +36,12 @@ function createView(doc: string): EditorView {
 }
 
 /** Pump rAF + the CodeMirror measure phase enough times to settle the overlay. */
-function flush(view: EditorView): void {
+async function flush(view: EditorView): Promise<void> {
   // requestAnimationFrame in jsdom-like envs is typically a setTimeout shim.
-  // Ask CodeMirror to flush its measure queue synchronously a couple of times.
+  // Allow the public measurement queue and its writes to settle across two frames.
   view.requestMeasure();
-  view.measure();
-  view.measure();
+  await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
+  await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
 }
 
 describe("structuralNodeOverlay (stage 1 smoke)", () => {
@@ -56,7 +56,7 @@ describe("structuralNodeOverlay (stage 1 smoke)", () => {
     const view = createView("(a 1 2)");
 
     // Initially the cursor is on the document root → no overlay, class absent.
-    flush(view);
+    await flush(view);
     expect(view.dom.classList.contains("useq-hide-bracket-match")).toBe(false);
 
     // Drive nav.in to put the cursor on the (a 1 2) list (a non-root node).
@@ -64,18 +64,13 @@ describe("structuralNodeOverlay (stage 1 smoke)", () => {
     expect(ok).toBe(true);
 
     // Wait for the rAF-debounced measure to settle.
-    await new Promise<void>((resolve) => {
-      requestAnimationFrame(() => {
-        flush(view);
-        resolve();
-      });
-    });
+    await flush(view);
 
     // The class is toggled in the write phase based on `polygons.length > 0`.
     // In jsdom polygon geometry is unreliable (coordsAtPos may return null),
     // so we accept either outcome here and just confirm the overlay didn't
     // crash. The contract behaviour ("class on when polygons render") is
-    // verified visually via Inspector scenarios.
+    // verified visually via Storybook stories.
     const svg = view.scrollDOM.querySelector("svg");
     expect(svg).not.toBeNull();
 
@@ -98,7 +93,7 @@ describe("structuralNodeOverlay (stage 1 smoke)", () => {
     // real EditorState (so ids and the idIndex come from the real treeFromLezer
     // pipeline), then verify that the focused-id we'd hand to the indent walk
     // matches the outer compound. Pixel measurement is exercised in the
-    // browser via Inspector scenarios.
+    // browser via Storybook stories.
     const view = createView("(a\n  1\n  2)");
     const value = view.state.field(structField);
     // The doc has one top-level list. nav.in from the doc-root cursor lands

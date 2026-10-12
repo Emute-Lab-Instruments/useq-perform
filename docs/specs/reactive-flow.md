@@ -60,11 +60,11 @@ Runtime channels (see `src/contracts/runtimeChannels.ts`):
 | Channel | Payload | Publisher(s) | Subscriber(s) |
 |---|---|---|---|
 | `settingsChanged` | `AppSettings` | `runtimeService` | `settingsStore` |
-| `connectionChanged` | `ConnectionChangedDetail` | `runtimeService` | Toolbars, transport orchestration |
+| `connectionChanged` | `ConnectionChangedDetail` | `runtimeService` | Toolbars, transport orchestration, LiveAnnouncer (connection announcements) |
 | `protocolReady` | `ProtocolReadyDetail` | JSON protocol driver | Transport orchestration |
 | `jsonMeta` | `JsonMetaEventDetail` | JSON protocol driver | Transport orchestration |
-| `codeEvaluated` | `CodeEvaluatedDetail` | Runtime/evaluation layer | Visualisation sampler and editor feedback |
-| `runtimeDiagnostics` | diagnostic snapshot | `runtimeDiagnostics` | Diagnostics UI |
+| `codeEvaluated` | `CodeEvaluatedDetail` | Runtime/evaluation layer | Visualisation sampler, editor feedback, toolbar BPM refresh, LiveAnnouncer (eval announcements) |
+| `runtimeDiagnostics` | diagnostic snapshot | `runtimeDiagnostics` | Devmode Runtime diagnostics settings section |
 | `bootstrapFailure` | failure detail | `runtimeDiagnostics` | Recovery UI |
 | `animateConnect` | `AnimateConnectDetail` | JSON protocol driver (not-connected) | Connect-button animation (UI) |
 | `devicePluggedIn` | `DevicePluggedInDetail` | `connector.ts` (saved device replug) | Reconnect UI / prompt |
@@ -78,7 +78,6 @@ Visualisation channels (see `src/contracts/visualisationChannels.ts`):
 |---|---|---|---|
 | `visualisationSessionChannel` | session detail | Visualisation sampler | Editor decorations |
 | `serialVisPaletteChangedChannel` | palette detail | Theme/visualisation utilities | Visualisation sampler |
-| `serialVisAutoOpenChannel` | `undefined` | Visualisation panel adapter | Visualisation panel |
 
 Gamepad channels (see `src/contracts/gamepadChannels.ts`) carry only typed gamepad pipeline events into editor/menu adapters. New gamepad-visible operations should prefer the action registry and resolver path before adding bespoke channels.
 

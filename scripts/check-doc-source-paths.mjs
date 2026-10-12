@@ -1,14 +1,14 @@
 #!/usr/bin/env node
 
 /**
- * Fail when current orientation docs name a source file that no
- * longer exists. Archival history and generated documentation are excluded on
+ * Fail when current orientation docs name a source file, or link to a
+ * relative path, that no longer exists. Archival history and generated documentation are excluded on
  * purpose: this gate protects the documents a new contributor is told to
  * trust, not historical evidence.
  */
 
 import { existsSync, readFileSync } from "node:fs";
-import { join, resolve } from "node:path";
+import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const root = resolve(fileURLToPath(new URL("..", import.meta.url)));
@@ -16,6 +16,8 @@ const sourceExtensions =
   /\.(?:c|cc|clj|cljs|cpp|css|h|hpp|html|js|json|mjs|ts|tsx|yaml|yml)$/;
 
 const documents = [
+  "AGENTS.md",
+  "CLAUDE.md",
   "README.md",
   "MAP.md",
   "ALIGNMENT.md",
@@ -45,6 +47,16 @@ for (const document of documents) {
       }
       if (!existsSync(join(root, rawPath))) {
         failures.push(`${document}:${index + 1}: ${rawPath}`);
+      }
+    }
+    // Relative Markdown link targets must exist too (files or directories).
+    for (const match of line.matchAll(/\]\(([^)\s]+)\)/g)) {
+      const target = match[1].replace(/#.*$/, "");
+      if (!target || /^[a-z][a-z0-9+.-]*:/i.test(target) || target.startsWith("/")) {
+        continue;
+      }
+      if (!existsSync(join(dirname(absoluteDocument), target))) {
+        failures.push(`${document}:${index + 1}: ${target}`);
       }
     }
   });

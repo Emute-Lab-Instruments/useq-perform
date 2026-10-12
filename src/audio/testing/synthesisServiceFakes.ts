@@ -40,7 +40,13 @@ export function createFakeAudioContext(options: {
   let state = options.initialState ?? "suspended";
   let failResume = false;
   let resumeCallCount = 0;
+  const stateListeners = new Set<() => void>();
   const addModuleCalls: string[] = [];
+  const setState = (next: AudioContextContract["state"]): void => {
+    if (state === next) return;
+    state = next;
+    for (const listener of stateListeners) listener();
+  };
 
   return {
     get state() {
@@ -63,19 +69,25 @@ export function createFakeAudioContext(options: {
         failResume = false;
         throw new Error("resume rejected");
       }
-      state = "running";
+      setState("running");
     },
     async suspend() {
-      state = "suspended";
+      setState("suspended");
     },
     async close() {
-      state = "closed";
+      setState("closed");
+    },
+    addEventListener(_type, listener) {
+      stateListeners.add(listener);
+    },
+    removeEventListener(_type, listener) {
+      stateListeners.delete(listener);
     },
     simulateRunning() {
-      state = "running";
+      setState("running");
     },
     forceClose() {
-      state = "closed";
+      setState("closed");
     },
     failNextResume() {
       failResume = true;

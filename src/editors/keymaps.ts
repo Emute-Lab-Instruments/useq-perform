@@ -11,14 +11,17 @@
  */
 
 import { complete_keymap as completeClojureKeymap } from "@nextjournal/clojure-mode";
-import { keymap } from "@codemirror/view";
+import { keymap, ViewPlugin } from "@codemirror/view";
 import type { EditorView } from "@codemirror/view";
-import { Prec } from "@codemirror/state";
+import { Compartment, Prec } from "@codemirror/state";
+import type { Extension } from "@codemirror/state";
 import { historyKeymap } from "@codemirror/commands";
 import { createResolver } from "../lib/keybindings/resolver.ts";
 import { getHandler } from "./commands/actionHandlers.ts";
 import { bindingsForProfile } from "../lib/keybindings/profileRegistry.ts";
 import { registerDefaultContexts } from "../lib/keybindings/contexts.ts";
+import { stickyModifiersExtension } from "../lib/keybindings/stickyModifiers.ts";
+import { setLiveBindingsProvider } from "../lib/keybindings/liveBindings.ts";
 import { profileFromUrl } from "../lib/keybindings/profiles.ts";
 import { actions, type ActionId } from "../lib/keybindings/actions.ts";
 import { getAppSettings } from "../runtime/appSettingsRepository.ts";
@@ -145,6 +148,12 @@ function policyKeyBinding(key: string) {
   return {
     key,
     run: (view: EditorView) => {
+      // A conditional registry binding on this policy key whose context is
+      // active runs first (keybindings.md §1.7): e.g. Enter →
+      // liveEdit.vectorConfirm while vectorMark.active (live-edit.md
+      // §3.7.3/§3.7.8). Without this, the Prec.highest policy route below
+      // would insert a newline instead of confirming the vector mark.
+      if (resolver.runActiveConditionalBinding(key, view)) return true;
       const prevent =
         getAppSettings().editor?.preventBracketUnbalancing ?? true;
       return executeEditorCommand(view, {
@@ -158,6 +167,63 @@ function policyKeyBinding(key: string) {
 }
 
 // ---------------------------------------------------------------------------
+// Live keymap compartment — resolver rebinds must reach the running editors
+// (keybindings.md §1.3/§1.9): the Keybindings panel and visualiser mutate the
+// resolver via rebind(); the registry-generated keymap extension is rebuilt
+// and swapped into every live view through this compartment.
+// ---------------------------------------------------------------------------
+
+const keymapCompartment = new Compartment();
+
+function registryKeymapExtensions(): Extension[] {
+  const extensions: Extension[] = [...resolver.toKeymapExtensions()];
+  // Sticky modifiers (keybindings.md §1.12) ride with the keymap bundle so a
+  // rebind-reconfigure preserves the gate. Boot-time read: the setting has no
+  // live toggle surface today.
+  if (getAppSettings().keybindings?.stickyModifiers === true) {
+    extensions.push(stickyModifiersExtension());
+  }
+  return extensions;
+}
+
+// Publish the active bindings for UI readers (keybindings.md §2) through the
+// lib-layer provider — a static resolver import from those modules would be a
+// module-init cycle (keymaps → actionHandlers → ActionPalette → …).
+setLiveBindingsProvider(() =>
+  resolver.resolvedAll().map((rb) => ({
+    action: rb.action,
+    key: rb.key,
+    when: rb.when,
+    preventDefault: rb.preventDefault,
+  })),
+);
+
+// Track live views so refreshKeymapExtensions() can reach every editor.
+const liveViews = new Set<EditorView>();
+const keymapViewTracker = ViewPlugin.fromClass(
+  class {
+    private view: EditorView;
+    constructor(view: EditorView) {
+      this.view = view;
+      liveViews.add(view);
+    }
+    destroy() {
+      liveViews.delete(this.view);
+    }
+  },
+);
+
+/**
+ * Rebuild the registry keymap from the current resolver state and reconfigure
+ * every live editor. Call after any successful `resolver.rebind()`.
+ */
+export function refreshKeymapExtensions(): void {
+  for (const view of liveViews) {
+    view.dispatch({ effects: keymapCompartment.reconfigure(registryKeymapExtensions()) });
+  }
+}
+
+// ---------------------------------------------------------------------------
 // Composed keymap extensions
 // ---------------------------------------------------------------------------
 
@@ -167,8 +233,11 @@ export let baseKeymap = [
     keymap.of([...policyKeys].map(policyKeyBinding)),
   ),
 
-  // Registry-generated bindings (our custom actions)
-  ...resolver.toKeymapExtensions(),
+  keymapViewTracker,
+
+  // Registry-generated bindings (our custom actions), behind a compartment so
+  // resolver rebinds apply without a reload.
+  keymapCompartment.of(registryKeymapExtensions()),
 
   // Remaining clojure-mode bindings (not remapped, not policy keys)
   keymap.of(remainingClojureBindings),

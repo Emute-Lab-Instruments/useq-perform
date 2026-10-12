@@ -4,7 +4,7 @@
 // no DOM, no reactive context, no timers.
 
 import { describe, expect, it } from "vitest";
-import { chord, flick, held, hold, keyOf, tap } from "./gestures";
+import { held, hold, keyOf, tap } from "./gestures";
 import {
   activeStack,
   buildLayerMap,
@@ -20,7 +20,6 @@ import type {
   GamepadState,
   Layer,
   LayerName,
-  Resolution,
 } from "./types";
 
 // ---------------------------------------------------------------------------

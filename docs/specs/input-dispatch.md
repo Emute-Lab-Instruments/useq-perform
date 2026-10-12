@@ -20,7 +20,7 @@ layer: cross-cutting
 - `src/lib/keybindings/actions.ts` — canonical action registry
 - `src/lib/gamepad/dispatcher.ts` — gamepad dispatcher (reaches router via handler registry)
 - `src/ui/keybindings/ActionPalette.tsx` — action palette (reaches router via handler registry)
-- `src/lib/menu/editorTarget.ts` — radial-menu tree commits through the router
+- `src/editors/menu/editorTarget.ts` — radial-menu tree commits through the router
 - `src/editors/extensions/liveEdit/markAction.ts` — live-edit widget commits through the router
 
 ---

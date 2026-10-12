@@ -1,5 +1,6 @@
 import {
   OPTIONAL_WASM_EXPORTS,
+  REQUIRED_WASM_EXPORTS,
   probeOptionalWasmExport,
   type CwrapDescriptor,
 } from "../contracts/wasmAbi";
@@ -20,9 +21,86 @@ export interface EmscriptenModule {
   _malloc(size: number): number;
   _free(pointer: number): void;
   HEAPF64: Float64Array;
+  HEAPU8?: Uint8Array;
+  UTF8ToString(pointer: number): string;
 }
 
 export type CoreLog = (message: string) => void;
+
+export function readAndFreeCString(
+  module: EmscriptenModule,
+  pointer: number,
+): string {
+  if (!pointer) return "";
+  try {
+    return module.UTF8ToString(pointer);
+  } finally {
+    module._free(pointer);
+  }
+}
+
+export interface RequiredWasmExports {
+  initialize(): void;
+  evaluate(code: string): string;
+  updateTime(seconds: number): void;
+  evaluateOutputAtTime(name: string, seconds: number): number;
+}
+
+/** Bind the shared, required interpreter ABI used by both runtime adapters. */
+export function bindRequiredWasmExports(
+  module: EmscriptenModule,
+): RequiredWasmExports {
+  const bind = (key: keyof typeof REQUIRED_WASM_EXPORTS) => {
+    const descriptor = REQUIRED_WASM_EXPORTS[key];
+    return module.cwrap(
+      descriptor.symbol,
+      descriptor.returnType,
+      descriptor.argTypes as unknown as string[],
+    );
+  };
+
+  const initialize = bind("useq_init") as () => void;
+  const evaluatePointer = bind("useq_eval") as (code: string) => number;
+  const update = bind("useq_update_time") as (seconds: number) => void;
+  const evaluateOutput = bind("useq_eval_output") as (
+    name: string,
+    seconds: number,
+  ) => number;
+
+  return {
+    initialize,
+    evaluate: (code) => readAndFreeCString(module, evaluatePointer(code)),
+    updateTime: (seconds) => update(Number(seconds) || 0),
+    evaluateOutputAtTime: (name, seconds) => {
+      const value = evaluateOutput(name, Number(seconds) || 0);
+      return Number.isNaN(value) ? Number.NaN : value;
+    },
+  };
+}
+
+export interface WasmDiagnosticReaders {
+  last?: () => string;
+  active?: () => string;
+}
+
+/** Bind optional diagnostic readers consistently for main-thread and Worker adapters. */
+export function bindWasmDiagnosticReaders(
+  module: EmscriptenModule,
+): WasmDiagnosticReaders {
+  const last = bindOptionalCwrap(
+    module,
+    OPTIONAL_WASM_EXPORTS.useq_last_diagnostics,
+  ) as (() => number) | null;
+  const active = bindOptionalCwrap(
+    module,
+    OPTIONAL_WASM_EXPORTS.useq_active_diagnostics,
+  ) as (() => number) | null;
+
+  return {
+    last: last ? () => readAndFreeCString(module, last()) : undefined,
+    active: active ? () => readAndFreeCString(module, active()) : undefined,
+  };
+}
 
 export function bindOptionalCwrap(
   module: EmscriptenModule,
@@ -52,6 +130,18 @@ export function isBrokenOptionalExportError(error: unknown): boolean {
   return error instanceof Error &&
     error.name === "TypeError" &&
     /func is not a function/i.test(error.message);
+}
+
+export function createWasmSynthDeclarationReset(
+  module: EmscriptenModule,
+  log: CoreLog = () => {},
+): () => boolean {
+  const reset = bindOptionalCwrap(
+    module,
+    OPTIONAL_WASM_EXPORTS.useq_clear_synth_declarations,
+    log,
+  ) as (() => number) | null;
+  return () => reset?.() === 1;
 }
 
 interface HeapBuffer {
@@ -214,6 +304,11 @@ export function createWasmBatchEvaluator(
     OPTIONAL_WASM_EXPORTS.useq_tick_and_project,
     log,
   );
+  const readProjectionFrontier = bindOptionalCwrap(
+    module,
+    OPTIONAL_WASM_EXPORTS.useq_projection_frontier_time,
+    log,
+  ) as (() => number) | null;
   if (tickAndProjectEval && !readLastError) {
     readLastError = bindOptionalCwrap(
       module,
@@ -228,7 +323,8 @@ export function createWasmBatchEvaluator(
   const lastErrorMessage = (fallback: string): string => {
     if (!readLastError) return fallback;
     try {
-      return (readLastError() as string) || fallback;
+      const pointer = Number(readLastError());
+      return (pointer ? readAndFreeCString(module, pointer) : "") || fallback;
     } catch (error) {
       if (isBrokenOptionalExportError(error)) readLastError = null;
       return fallback;
@@ -257,7 +353,6 @@ export function createWasmBatchEvaluator(
   );
 
   const evaluateLegacy = (
-    outputs: string[],
     outputsJson: string,
     start: number,
     end: number,
@@ -348,7 +443,7 @@ export function createWasmBatchEvaluator(
       }
       if (legacyEval) {
         try {
-          return evaluateLegacy(safeOutputs, outputsJson, start, end, count);
+          return evaluateLegacy(outputsJson, start, end, count);
         } catch (error) {
           if (!isBrokenOptionalExportError(error)) throw error;
           log(`legacy batch export is broken; sampling via useq_eval_output()`);
@@ -380,6 +475,9 @@ export function createWasmBatchEvaluator(
 
       const total = safeOutputs.length * (1 + safeFuture);
       const { pointer, view } = buffer.ensure(total);
+      const frontierBefore = readProjectionFrontier
+        ? Number(readProjectionFrontier())
+        : Number.NaN;
       let status: number;
       try {
         status = tickAndProjectEval(
@@ -415,9 +513,16 @@ export function createWasmBatchEvaluator(
       }
 
       const projectionSamples = new Map<string, TimeSample[]>();
+      const frontierAfter = safeFuture > 0 && readProjectionFrontier
+        ? Number(readProjectionFrontier())
+        : Number.NaN;
       if (safeFuture > 0) {
-        const origin = Number.isFinite(projectionOrigin) ? projectionOrigin : 0;
-        const end = Number.isFinite(projectEnd) ? projectEnd : 0;
+        const origin = safeMode === 2 && Number.isFinite(frontierBefore)
+          ? frontierBefore
+          : (Number.isFinite(projectionOrigin) ? projectionOrigin : 0);
+        const end = Number.isFinite(frontierAfter)
+          ? frontierAfter
+          : (Number(projectEnd) || 0);
         const step = (end - origin) / safeFuture;
         for (let channel = 0; channel < safeOutputs.length; channel++) {
           const name = safeOutputs[channel];
@@ -432,7 +537,13 @@ export function createWasmBatchEvaluator(
           projectionSamples.set(name, samples);
         }
       }
-      return { tickValues, projectionSamples };
+      return {
+        tickValues,
+        projectionSamples,
+        ...(Number.isFinite(frontierAfter)
+          ? { projectionFrontierTime: frontierAfter }
+          : {}),
+      };
     },
 
     supportsTimeWindow: () => typedEval !== null || legacyEval !== null,

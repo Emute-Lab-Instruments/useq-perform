@@ -21,9 +21,45 @@ import type {
   Tree,
 } from "../core/index.ts";
 import { nodeCursor, singleCursor } from "../core/index.ts";
-import { pathOf, nodeAtPathClamped } from "../core/traversal.ts";
+import { pathOf, nodeAtPathClamped, nodeAtPath } from "../core/traversal.ts";
 
 export type CursorPath = ReadonlyArray<number>;
+
+/** Focus in the result tree, independent of the IDs minted when text is folded. */
+export type StructuralFocus = ReadonlyArray<
+  | { kind: "node"; path: CursorPath; phase?: "pre" | "post" }
+  | { kind: "range"; parent: CursorPath; start: CursorPath; end: CursorPath; anchor: "start" | "end" }
+>;
+
+export function captureStructuralFocus({ tree, cursors }: { tree: Tree; cursors: CursorSet }): StructuralFocus {
+  return [cursors.primary, ...cursors.secondaries].map((cursor) =>
+    cursor.kind === "node"
+      ? { kind: "node" as const, path: pathOf(tree.root, cursor.target) ?? [], phase: cursor.phase }
+      : {
+          kind: "range" as const,
+          parent: pathOf(tree.root, cursor.parent) ?? [],
+          start: pathOf(tree.root, cursor.start) ?? [],
+          end: pathOf(tree.root, cursor.end) ?? [],
+          anchor: cursor.anchor,
+        },
+  );
+}
+
+export function resolveStructuralFocus(focus: StructuralFocus, tree: Tree): CursorSet {
+  const cursors = focus.map((cursor): Cursor => {
+    if (cursor.kind === "node") {
+      return nodeCursor(nodeAtPathClamped(tree.root, cursor.path).id, cursor.phase);
+    }
+    const parent = nodeAtPath(tree.root, cursor.parent);
+    const start = nodeAtPath(tree.root, cursor.start);
+    const end = nodeAtPath(tree.root, cursor.end);
+    if (parent && start && end) {
+      return { kind: "range", parent: parent.id, start: start.id, end: end.id, anchor: cursor.anchor };
+    }
+    return nodeCursor(nodeAtPathClamped(tree.root, cursor[cursor.anchor]).id);
+  });
+  return { primary: cursors[0] ?? nodeCursor(tree.root.id), secondaries: cursors.slice(1) };
+}
 
 export function pathOfCursor(c: Cursor, tree: Tree): CursorPath | null {
   const targetId: NodeId =

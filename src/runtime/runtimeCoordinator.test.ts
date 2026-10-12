@@ -40,4 +40,15 @@ describe("runtimeCoordinator transitions", () => {
     expect(() => getActiveWasmRuntimePort()).toThrow(/no Worker runtime/i);
     expect(getRuntimeSessionState().session.transportMode).toBe("none");
   });
+
+  it("treats stale port publications as complete no-ops", () => {
+    const stale = { kind: "wasm-runtime" } as WasmRuntimePort;
+    const current = { kind: "wasm-runtime" } as WasmRuntimePort;
+    transitionRuntimeCoordinator({ type: "select-wasm-port", port: current });
+    transitionRuntimeCoordinator({ type: "wasm-availability", available: true, port: current });
+    transitionRuntimeCoordinator({ type: "clear-wasm-port", port: stale });
+    transitionRuntimeCoordinator({ type: "wasm-availability", available: false, port: stale });
+    expect(getActiveWasmRuntimePort()).toBe(current);
+    expect(getRuntimeSessionState().session.wasmEnabled).toBe(true);
+  });
 });

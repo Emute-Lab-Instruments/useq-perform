@@ -13,6 +13,70 @@
 // pattern established in src/lib/gamepad/types.ts (GestureKey, AxisChannelName,
 // LayerName).
 
+import type { ActionId } from "../keybindings/actions";
+
+/**
+ * The menu dispatcher — the single impure component in the menu system.
+ * Receives high-level action IDs and axis data from the gamepad pipeline,
+ * drives the pure state reducer, applies verb mutations to the editor, and
+ * handles auto-chain re-opening.
+ *
+ * @see docs/specs/radial-menu.md §11.2
+ */
+export interface MenuDispatcher {
+  /** Register action and axis subscriptions; returns their cleanup function. */
+  bind(): () => void;
+
+  /**
+   * Open the menu with a specific apply target. Reads the manifest from the
+   * cached loader. No-op if the menu is already open.
+   */
+  open(target: ApplyTarget, side?: "before" | "after", initialVerb?: VerbKind, categoryIndex?: number): void;
+
+  /**
+   * Close the menu (cancel path). Dispatches a `cancel` input to the reducer.
+   */
+  close(): void;
+
+  /**
+   * Handle a menu-related action ID. Called by the action routing layer
+   * (either from `fireAction` in the gamepad pipeline or from the handler
+   * registry).
+   */
+  handleAction(action: ActionId): void;
+
+  /**
+   * Handle an axis update (stick angle mapped to hover index).
+   * `stick` is `"left"` or `"right"`, `hover` is the computed segment index
+   * or `null` when below engagement threshold.
+   */
+  handleAxis(stick: "left" | "right", hover: number | null): void;
+
+  /**
+   * Append a character in numpad sub-mode. No-op if not in numpad phase.
+   * Used by the gamepad paradigm layer for face-A presses mapped to the
+   * current stick position's character (§14.3).
+   */
+  numpadAppend(char: string): void;
+
+  /**
+   * Handle a raw shoulder (LB / RB) press or release edge. This is the freeze
+   * mechanic's input path (§3.3.2, §6.1): a press in the `picking` sub-phase
+   * latches a FrozenSnapshot; releasing all shoulders clears it. Freeze is not
+   * a user-visible action (§11.4) — it is intrinsic to the menu's input
+   * handling — so it flows through here rather than through `handleAction`.
+   *
+   * `side` is `'left'` (LB), `'right'` (RB), or `'both'` (coalesced
+   * near-simultaneous press/release per §6.2.5). `ts` is a
+   * `performance.now()`-style timestamp.
+   */
+  handleShoulder(
+    side: "left" | "right" | "both",
+    transition: "press" | "release",
+    ts: number,
+  ): void;
+}
+
 // ---------------------------------------------------------------------------
 // 1. Identifiers — branded strings (spec §2.1)
 // ---------------------------------------------------------------------------
@@ -342,6 +406,7 @@ export interface Manifest {
  */
 export interface ApplyTarget {
   readonly __brand: "ApplyTarget";
+  readonly side?: "before" | "after";
 }
 
 // ---------------------------------------------------------------------------
@@ -417,6 +482,8 @@ export interface MenuStateOpen {
   readonly shoulderHeld: ShoulderHeld;
   readonly frozen: FrozenSnapshot | null;
   readonly target: ApplyTarget;
+  readonly side?: "before" | "after";
+  readonly initialVerb?: VerbKind;
   readonly manifest: Manifest;
 }
 
@@ -535,6 +602,9 @@ export type MenuInput =
       readonly kind: "open";
       readonly target: ApplyTarget;
       readonly manifest: Manifest;
+      readonly side?: "before" | "after";
+      readonly initialVerb?: VerbKind;
+      readonly categoryIndex?: number;
     }
   /** Live left-stick poll. `hover` is null when stick is centred. */
   | { readonly kind: "axisLeft"; readonly hover: StickHover }

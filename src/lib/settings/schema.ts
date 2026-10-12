@@ -27,6 +27,10 @@ export interface StorageSettings {
   autoSaveInterval: number;
 }
 
+/** Panel chrome designs selectable via `ui.panelChrome`. */
+export type PanelChromeDesign = "pane" | "drawer" | "tile";
+export const PANEL_CHROME_DESIGNS: readonly PanelChromeDesign[] = ["pane", "drawer", "tile"];
+
 export interface UISettings {
   consoleLinesLimit: number;
   customThemes: unknown[];
@@ -35,6 +39,13 @@ export interface UISettings {
   expressionLastTrackingEnabled: boolean;
   expressionClearButtonEnabled: boolean;
   gamepadPickerStyle: "grid" | "radial";
+  /**
+   * Window chrome for the Settings / Help / Machine panels:
+   *   - "pane":   free-floating window, drag to move, resize from edges
+   *   - "drawer": full-height drawer docked to a viewport side
+   *   - "tile":   snaps to predefined layout slots
+   */
+  panelChrome: PanelChromeDesign;
   nodeHighlightCornerRadius: number;
   nodeHighlightYOffset: number;
   /**
@@ -50,6 +61,8 @@ export interface UISettings {
   indentGuideDash: number;
   indentGuideGap: number;
   indentGuideYPadding: number;
+  /** Show ambient bare-operator identities and parameter-domain hints. */
+  namespaceHintsVerbose: boolean;
 }
 
 export interface VisualisationSettings {
@@ -490,6 +503,7 @@ export const defaultUserSettings: AppSettings = {
     expressionLastTrackingEnabled: true,
     expressionClearButtonEnabled: true,
     gamepadPickerStyle: "grid",
+    panelChrome: "pane",
     nodeHighlightCornerRadius: 3,
     nodeHighlightYOffset: 0,
     indentGuideMode: "always",
@@ -499,6 +513,7 @@ export const defaultUserSettings: AppSettings = {
     indentGuideDash: 4,
     indentGuideGap: 4,
     indentGuideYPadding: 2,
+    namespaceHintsVerbose: true,
   },
   visualisation: { ...DEFAULT_VISUALISATION },
   runtime: {

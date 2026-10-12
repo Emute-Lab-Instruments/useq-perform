@@ -1,0 +1,28 @@
+/* Shared loading-state placeholder (src/ui/LoadingState.tsx) */
+
+.loading-state {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 12px 16px;
+  color: var(--text-secondary, rgba(248, 248, 242, 0.7));
+  font-family: var(--code-font, monospace);
+  font-size: 0.9em;
+  animation: loading-state-pulse 1.6s ease-in-out infinite;
+}
+
+@keyframes loading-state-pulse {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.55;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .loading-state {
+    animation: none;
+  }
+}

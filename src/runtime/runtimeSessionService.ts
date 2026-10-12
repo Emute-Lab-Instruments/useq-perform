@@ -117,9 +117,7 @@ export function reportTransportConnectionChanged(facts: {
 }
 
 /** Publish a diagnostics refresh after the protocol driver changes mode. */
-export function reportProtocolModeChanged(
-  _protocolMode: RuntimeProtocolMode,
-): void {
+export function reportProtocolModeChanged(): void {
   publishDiagnosticsSnapshot();
 }
 
@@ -133,14 +131,6 @@ export function subscribeRuntimeService(
   listener: (state: RuntimeSessionState) => void
 ): () => void {
   return subscribeRuntimeSessionState(listener);
-}
-
-export function isRuntimeHardwareConnected(): boolean {
-  return getRuntimeSessionState().session.hasHardwareConnection;
-}
-
-export function isRuntimeWasmEnabled(): boolean {
-  return getRuntimeSessionState().session.wasmEnabled;
 }
 
 export function resetRuntimeServiceForTests(): void {

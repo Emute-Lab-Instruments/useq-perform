@@ -7,7 +7,7 @@
   inset: 0;
   background: rgba(0, 0, 0, 0.45);
   backdrop-filter: blur(4px);
-  z-index: 2000;
+  z-index: var(--z-takeover);
   display: flex;
   justify-content: center;
   align-items: flex-start;
@@ -43,7 +43,6 @@
   color: var(--text-primary, #f8f8f2);
   font-family: var(--code-font, 'IBM Plex Mono', monospace);
   font-size: 0.9em;
-  outline: none;
 }
 
 .action-palette-input::placeholder {
@@ -136,7 +135,7 @@
   color: var(--text-primary, #f8f8f2);
   font-family: var(--code-font, 'IBM Plex Mono', monospace);
   font-size: 0.8em;
-  z-index: 2100;
+  z-index: calc(var(--z-takeover) + 100);
   pointer-events: none;
   animation: palette-toast-in 0.15s ease-out, palette-toast-out 0.3s ease-in 1.7s forwards;
 }

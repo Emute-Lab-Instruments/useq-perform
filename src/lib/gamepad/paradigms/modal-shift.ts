@@ -55,7 +55,6 @@ import type {
   LayerName,
 } from "../types";
 import { isMainMenuOpen } from "../../mainMenu/store";
-import { isGrabActive } from "../grabState";
 
 const ln = (n: string) => n as LayerName;
 const ch = (n: string) => n as AxisChannelName;
@@ -84,7 +83,6 @@ const baseLayer: Layer = {
     [keyOf(held("Left"))]: "nav.left",
     [keyOf(tap("Right"))]: "nav.right",
     [keyOf(held("Right"))]: "nav.right",
-    [keyOf(tap("A"))]: "actOn.open",
     [keyOf(tap("B"))]: "nav.out",
     [keyOf(tap("Start"))]: "eval.now",
     [keyOf(tap("Back"))]: "edit.undo",
@@ -98,7 +96,27 @@ const baseLayer: Layer = {
     [keyOf(chord(["RT", "A"]))]: "actOn.grab",
     [keyOf(chord(["LeftStickPress", "RightStickPress"]))]: "mainMenu.open",
   },
+  leaders: { [keyOf(tap("A"))]: ln("act-on") },
   axes: { right: ch("manual-control") },
+};
+
+const actOnLayer: Layer = {
+  name: ln("act-on"),
+  popOn: ["resolution", "timeout"],
+  ttlMs: 2000,
+  onMiss: "pop-and-fall-through",
+  gestures: {
+    [keyOf(tap("X"))]: "actOn.replace",
+    [keyOf(tap("Y"))]: "actOn.wrapWith",
+    [keyOf(tap("B"))]: "actOn.cut",
+    [keyOf(tap("A"))]: "actOn.duplicate",
+    [keyOf(tap("LB"))]: "actOn.copy",
+    [keyOf(tap("RB"))]: "actOn.paste",
+    [keyOf(tap("Up"))]: "edit.raise",
+    [keyOf(tap("Down"))]: "actOn.wrapList",
+    [keyOf(tap("Start"))]: "liveEdit.mark",
+    [keyOf(tap("Back"))]: "actOn.cancel",
+  },
 };
 
 const lbShiftedLayer: Layer = {
@@ -157,7 +175,7 @@ const lbRbShiftedLayer: Layer = {
 // ─────────────────────────────────────────────────────────────────────────────
 const grabLayer: Layer = {
   name: ln("grab-mode"),
-  when: () => isGrabActive(),
+  when: (state) => state.grabActive === true,
   gestures: {
     [keyOf(tap("Left"))]: "grab.moveLeft",
     [keyOf(held("Left"))]: "grab.moveLeft",
@@ -236,7 +254,10 @@ const insertionLayer: Layer = {
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Main menu layer (main-menu.md §4.1): masks all other gamepad input when the
-// main menu is open. D-pad navigates the menu; face buttons select/back/close.
+// main menu is open — `mask: true` discards any gesture this layer does not
+// bind (gamepad.md §6.8.1: "When open, it masks all other input"), so X, Y and
+// D-pad left/right cannot leak through to the editor's base layer. D-pad
+// Up/Down navigates the menu; face buttons select/back/close.
 // L3+R3 chord toggles (closes) the menu.
 // ─────────────────────────────────────────────────────────────────────────────
 const mainMenuLayer: Layer = {
@@ -257,6 +278,9 @@ const mainMenuLayer: Layer = {
     [keyOf(held("RB"))]: "mainMenu.adjustUp",
     [keyOf(chord(["LeftStickPress", "RightStickPress"]))]: "mainMenu.close",
   },
+  // Full input takeover (main-menu.md §1.4/§4.1, gamepad.md §6.8.1): discard
+  // unbound gestures instead of leaking them to lower layers.
+  mask: true,
 };
 
 export const modalShiftLayers: readonly Layer[] = [
@@ -269,3 +293,5 @@ export const modalShiftLayers: readonly Layer[] = [
   atomEditLayer,
   baseLayer,
 ];
+
+export const modalShiftTransientLayers: readonly Layer[] = [actOnLayer];

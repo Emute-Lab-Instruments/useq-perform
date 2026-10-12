@@ -42,18 +42,18 @@ layer: cross-cutting
 1.1 uSEQ has two kinds of state identity today:
 
 - **Named state**: a top-level `defstate` cell is identified by its symbol. The runtime spec already says edits to that update body do not reset the state ([runtime state spec section 4](../../src-useq/docs/specs/state.md)).
-- **Anonymous state**: stateful primitives and UGens inside expressions allocate state slots as the graph compiler walks the source. Examples include `phasor`, `lfo`, `slew`, `sah`, `count`, `noise`, and `integrate`.
+- **Anonymous state**: stateful primitives and UGens inside expressions allocate state slots as the graph compiler walks the source. Examples include `phasor`, `sin[lfo]`, `slew`, `sah`, `count`, `noise`, and `integrate`.
 
 1.2 Anonymous state is the weak point. If the user edits:
 
 ```lisp
-(a1 (+ (phasor 1) (lfo 0.5)))
+(a1 (+ (phasor 1) (sin[lfo] 0.5)))
 ```
 
 into:
 
 ```lisp
-(a1 (+ (lfo 0.5) (phasor 1)))
+(a1 (+ (sin[lfo] 0.5) (phasor 1)))
 ```
 
 the runtime cannot currently know which newly compiled state slot is "the same"
@@ -120,9 +120,9 @@ scope (section 5).
 3.1 Users commonly keep multiple expressions for the same output in the buffer:
 
 ```lisp
-(a1 (saw 1))
-(a1 (tri 0.5))
-(a1 (sqr 2))
+(a1 (saw[lfo] 1))
+(a1 (tri[lfo] 0.5))
+(a1 (sqr[lfo] 2))
 ```
 
 Only one is active at a time. The editor shows this through eval/gutter rails
@@ -132,9 +132,9 @@ forms are variants, not competing programs.
 3.2 It is natural for variants to share state:
 
 ```lisp
-(a1 (saw 1 :id "phase-A"))
-(a1 (tri 0.5 :id "phase-A"))
-(a1 (sqr 2 :id "phase-A"))
+(a1 (saw[lfo] 1 :id "phase-A"))
+(a1 (tri[lfo] 0.5 :id "phase-A"))
+(a1 (sqr[lfo] 2 :id "phase-A"))
 ```
 
 Evaluating the first form, waiting, evaluating the second form, then returning
@@ -188,10 +188,10 @@ state can be shared across operators.
 
 ```lisp
 (phasor 1 :id "phase-A")
-(saw 1 :id "phase-A")
-(tri 1 :id "phase-A")
-(sqr 1 :id "phase-A")
-(lfo 1 :wave :tri :id "phase-A")
+(saw[lfo] 1 :id "phase-A")
+(tri[lfo] 1 :id "phase-A")
+(sqr[lfo] 1 :id "phase-A")
+(tri[lfo bi] 1 :id "phase-A")
 ```
 
 These forms may all preserve the same phase. The waveform is a view or shaping
@@ -201,7 +201,7 @@ function over the same phase resource.
 ID matches:
 
 ```lisp
-(saw 1 :id "x")
+(saw[lfo] 1 :id "x")
 (count gate :id "x")
 ```
 
@@ -237,8 +237,8 @@ runtime state spec.
 variants:
 
 ```lisp
-(a1 (saw 1 :id "phase-A"))
-(a1 (tri 1 :id "phase-A"))
+(a1 (saw[lfo] 1 :id "phase-A"))
+(a1 (tri[lfo] 1 :id "phase-A"))
 ```
 
 5.2 Duplicate IDs in the same active graph are allowed only when the compiler
@@ -247,8 +247,8 @@ can prove the resources are used coherently.
 5.3 This should be rejected or require an explicit sharing form:
 
 ```lisp
-(a1 (+ (saw 1 :id "phase-A")
-       (tri 2 :id "phase-A")))
+(a1 (+ (saw[lfo] 1 :id "phase-A")
+       (tri[lfo] 2 :id "phase-A")))
 ```
 
 Both forms would try to advance the same `oscillator-phase` resource with
@@ -259,15 +259,14 @@ is ambiguous. The runtime must not choose silently.
 
 ```lisp
 (a1 (let [p (phasor 1 :id "phase-A")]
-      (+ (saw-shape p) (tri-shape p))))
+      (+ (saw p) (tri p))))
 ```
 
-The exact shape-function names are illustrative. The important distinction is
-one state source feeding multiple pure views.
+The important distinction is one state source feeding multiple pure views.
 
 5.5 Duplicate active IDs with disjoint resource kinds may compile, but should
 produce an editor-visible warning if the shared user ID looks accidental.
-Example: one active `saw` and one active `count` with the same ID do not alias
+Example: one active `saw[lfo]` and one active `count` with the same ID do not alias
 runtime storage, but the visual ID relationship may still surprise the user.
 
 ---
@@ -280,7 +279,7 @@ allowed by this spec.
 6.2 **Keyword form**:
 
 ```lisp
-(saw 1 :id "phase-A")
+(saw[lfo] 1 :id "phase-A")
 ```
 
 Advantages: compact, readable, consistent with the existing `live-edit :id`
@@ -290,7 +289,7 @@ primitive must accept or ignore `:id` in its argument grammar.
 6.3 **Wrapper form**:
 
 ```lisp
-(with-state-id "phase-A" (saw 1))
+(with-state-id "phase-A" (saw[lfo] 1))
 ```
 
 Advantages: uniform, works for future stateful forms without changing every
@@ -437,7 +436,7 @@ temporary, and anchored to source.
 - a stronger warning style for duplicate active conflicts.
 
 9.4 The visual link must distinguish same user ID from same runtime resource.
-For example, `saw :id "x"` and `count :id "x"` share a user ID but not a
+For example, `saw[lfo] :id "x"` and `count :id "x"` share a user ID but not a
 resource schema. The UI can show that they are related while warning that they
 do not continue the same resource.
 

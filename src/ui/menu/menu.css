@@ -23,8 +23,9 @@
  *     (--accent-color, --panel-bg, --text-primary, --code-font, etc.).
  *   - All transitions <= 150ms (this is a performance app).
  *   - Pure CSS, no preprocessor, no JS-driven animation.
- *   - Backdrop sits above editor chrome but below modals (z-index 1500 —
- *     editor toolbars top out at 35, action-palette at 2000).
+ *   - Backdrop sits above editor chrome but below modals (z-index toast+400
+ *     — editor toolbars top out at --z-toolbar-side, action-palette at
+ *     --z-takeover).
  * ===================================================================== */
 
 /* ---------------------------------------------------------------------
@@ -32,7 +33,7 @@
  * Keep names ".radial-menu-*" for namespacing; never leak into globals.
  * ------------------------------------------------------------------ */
 :root {
-  --radial-menu-z: 1500;
+  --radial-menu-z: calc(var(--z-toast) + 400);
   --radial-menu-bg: var(--panel-bg, rgba(20, 22, 27, 0.96));
   --radial-menu-border: var(--panel-border, rgba(255, 255, 255, 0.18));
   --radial-menu-segment-fill: rgba(255, 255, 255, 0.04);
@@ -44,7 +45,7 @@
   --radial-menu-text: var(--text-primary, #f8f8f2);
   --radial-menu-text-dim: rgba(248, 248, 242, 0.55);
   --radial-menu-accent: var(--accent-color, #00ff41);
-  --radial-menu-warn: #ffb86c;
+  --radial-menu-warn: var(--status-warn, #ffb86c);
   --radial-menu-left-tint: rgba(120, 200, 255, 0.95);   /* cool — left hand */
   --radial-menu-right-tint: rgba(255, 140, 170, 0.95);  /* warm — right hand */
   --radial-menu-both-tint: rgba(255, 220, 120, 0.95);

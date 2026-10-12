@@ -32,6 +32,10 @@ export interface ConflictInfo {
   previousSlotId: string;
   /** The source that was moved. */
   source: MidiSource;
+  /** The slot the source was learned into. */
+  slotId: string;
+  /** The target slot's own binding before the learn, if it had one. */
+  replacedBinding?: MidiBinding;
 }
 
 export interface MidiLearnController {
@@ -150,17 +154,21 @@ export function createMidiLearnController(
   /**
    * Create a binding for `slotId` from `source`, resolving any conflict.
    * Returns ConflictInfo if an existing binding was displaced, null otherwise.
+   * The info carries everything needed to revert to the pre-bind state
+   * (§5.10 toast Undo): the displaced slot, the moved source, the target
+   * slot, and the target slot's own prior binding.
    */
   function applyLearnedBinding(
     slotId: string,
     source: MidiSource,
   ): ConflictInfo | null {
+    const replacedBinding = config.getBindings().get(slotId);
     let conflict: ConflictInfo | null = null;
 
     const existing = findConflict(source, slotId);
     if (existing) {
       config.removeBinding(existing.slotId);
-      conflict = { previousSlotId: existing.slotId, source };
+      conflict = { previousSlotId: existing.slotId, source, slotId, replacedBinding };
     }
 
     config.applyBinding({ slotId, source });

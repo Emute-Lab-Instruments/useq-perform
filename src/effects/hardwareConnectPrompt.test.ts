@@ -5,7 +5,7 @@ import type { ConnectionChangedDetail } from "../contracts/runtimeChannels";
 // in the transport/editor graph (and so we can observe calls). The confirm
 // modal is injected via __test__.setConfirmPrompt (effects may not import ui).
 const showConfirmModal = vi.fn();
-const sendTouSEQ = vi.fn(() => Promise.resolve({}));
+const sendTouSEQ = vi.fn((_code: string) => Promise.resolve({}));
 let editorContent: string | null = "(a1 (sin t))";
 
 vi.mock("../transport/json-protocol.ts", () => ({

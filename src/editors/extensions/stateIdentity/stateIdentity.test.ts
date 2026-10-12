@@ -18,7 +18,6 @@
  */
 
 import { describe, expect, it } from "vitest";
-import { EditorState } from "@codemirror/state";
 import { history, undo, redo, isolateHistory } from "@codemirror/commands";
 import { EditorView } from "@codemirror/view";
 import { default_extensions as clojureExtensions } from "@nextjournal/clojure-mode";

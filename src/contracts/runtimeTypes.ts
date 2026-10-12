@@ -65,7 +65,7 @@ export type RuntimeDiagnostic = UseqDiagnostic;
 
 // ── Diagnostics types ──────────────────────────────────────────
 
-export type RuntimeProtocolMode = "legacy" | "json";
+export type RuntimeProtocolMode = "negotiating" | "legacy" | "json";
 export type RuntimeSettingsSource =
   | "defaults"
   | "local-storage"
@@ -116,6 +116,11 @@ export interface StateSnapshotLiveSlot {
   value: number;
   min: number;
   max: number;
+  seed?: number;
+  variant?: "numeric" | "boolean" | "keyword";
+  options?: string[];
+  step?: number;
+  precision?: number;
 }
 
 export interface StateSnapshot {

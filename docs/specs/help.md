@@ -17,6 +17,7 @@ layer: behavioural
 - `src/ui/help/helpChannels.ts` — help-panel-local typed channels (search, tab switching)
 - `src/ui/help/guide/` — guide system: `GuideTab.tsx`, `GuideSection.tsx`, `Playground.tsx`, `LiveProbe.tsx`, `guideData.ts`, `guideTypes.ts`, `contentBlocks.tsx`, `chapters/`
 - `src/lib/helpContentPreloader.ts` — eager preload of help content
+- `src/ui/LoadingState.tsx` — shared spinner-free loading placeholder (`role="status"`, `aria-live="polite"`) used by async help tabs
 - `src/utils/referenceStore.ts` — reference data store (star/expand/version state)
 - `src/utils/snippetStore.ts` — snippet data store (user + starter snippets)
 
@@ -42,12 +43,14 @@ layer: behavioural
 
 1.8 **Search.** Snippets and reference both expose a single search box that filters by title/code/tags and by name/description/tags respectively (routed via `src/ui/help/helpChannels.ts`). Search is case-insensitive substring; ranking promotes title matches over body matches.
 
+1.9 **Help coexists with Settings.** Opening Help does not close the Settings panel. Help docks to the left and Settings to the right (see [overlays.md](overlays.md) §1.2.1), except on viewports ≤ 700px wide, where only one chrome panel is shown at a time.
+
 ## 2. Onboarding
 
-2.1 An **onboarding banner** is shown when the user has not previously dismissed the banner (`useq:onboarding-dismissed` not set). This includes first-time users in `wasm` mode — the banner welcomes them and explains how to connect hardware. In `none` mode (no runtime at all), the banner is more urgent: it explains how to enable WASM or connect hardware to proceed.
+2.1 An **onboarding banner** is shown when the user has not previously dismissed the banner (`useq:onboarding-dismissed` not set) and has not dismissed it in the current session. This includes first-time users in `wasm` mode — the banner welcomes them and explains how to connect hardware. In `none` mode (no runtime at all), the banner is more urgent: it explains how to enable WASM or connect hardware to proceed.
 
-2.2 Dismissing the banner persists `useq:onboarding-dismissed` and the banner does not return until that key is cleared. `?nosave` keeps the banner from being permanently dismissed.
+2.2 The banner offers **Dismiss**, which hides it for the current session only (nothing is persisted), and **Don't show again**, which persists `useq:onboarding-dismissed` so the banner does not return until that key is cleared. `?nosave` keeps "Don't show again" from persisting.
 
-2.3 The banner explains how to connect hardware or proceed in WASM-only mode and provides at least one actionable button (e.g. connect, learn more).
+2.3 In `none` mode the banner is actionable: **Connect uSEQ (USB)** requests the hardware connection, and **Use virtual uSEQ (WASM)** enables the built-in interpreter by setting `wasm.enabled: true` through the sanctioned settings mutation surface (`runtimeService.updateSettings` — see [settings.md](settings.md)); the mode then transitions out of `none` (see [runtime-modes.md](runtime-modes.md) §1.10) and the banner hides itself. When the browser lacks Worker or WebAssembly support the WASM action is replaced by a visible explanation that the virtual uSEQ runtime is unavailable. The banner must never steal focus (see [overlays.md](overlays.md) §1.6).
 
 2.4 The banner must not occlude the editor; it docks in a non-intrusive region.

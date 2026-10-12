@@ -6,24 +6,13 @@
 //    default true) that visually marks evaluable top-level forms. The gutter
 //    must remain in sync with the AST as the user types."
 //
-// Production source: src/editors/extensions/expressionHighlights.ts
-//   The gutter is built from `gutterField`, which calls `buildMarkers(state)`
-//   on every doc change (`tr.docChanged`). Markers are positioned using
-//   `findExpressionRanges` (regex-driven for the `[ads][1-8]` pattern) and
-//   `findExpressionBounds` (Lezer-AST-driven for the enclosing list). The
-//   spec invariant we assert here: any time the document changes, the gutter
-//   reflects the current AST without stale markers.
-//
-// IMPORTANT — observed quirk (NOT enforced by these tests):
-//   The Lezer parser used by clojure-mode is error-tolerant: an unclosed form
-//   `(a1` still produces a `List [0,3]` node. Consequently, `(a1` shows a
-//   gutter marker even though no closing paren has been typed yet. The tests
-//   below pin the actual contract: the marker tracks what the AST sees.
+// Recognized assignments come from collectOutputAssignments. Incomplete forms
+// intentionally have no rail or button (expression-gutter.md §1.4).
 
 import { afterEach, describe, expect, it } from "vitest";
 import { EditorState, type Extension } from "@codemirror/state";
 import { EditorView } from "@codemirror/view";
-// @ts-expect-error — clojure-mode has no type declarations
+
 import { default_extensions } from "@nextjournal/clojure-mode";
 
 import {
@@ -165,16 +154,9 @@ describe("expression gutter: stays in sync with AST as document changes", () => 
     view.destroy();
   });
 
-  it("appending the closing paren to an unclosed form keeps the marker stable", () => {
-    // Start with the unclosed `(a1 1` (one marker — see file header note),
-    // then close it. The marker count stays at one and stays anchored to
-    // line 1 — the gutter rebuilt cleanly from the new AST.
-    //
-    // We replace the whole document instead of inserting at `doc.length`
-    // because clojure-mode's structural editing transaction-filters mutate
-    // single-char inserts at the trailing edge.
+  it("completing an unclosed form adds its marker", () => {
     const { view, gutterField } = createView("(a1 1");
-    expect(readMarkers(view, gutterField)).toHaveLength(1);
+    expect(readMarkers(view, gutterField)).toHaveLength(0);
 
     view.dispatch({
       changes: { from: 0, to: view.state.doc.length, insert: "(a1 1)" },
@@ -186,17 +168,7 @@ describe("expression gutter: stays in sync with AST as document changes", () => 
     view.destroy();
   });
 
-  it("removing the closing paren leaves the marker in place (Lezer error-recovers)", () => {
-    // SPEC-VS-IMPLEMENTATION NOTE: the task expectation was that removing
-    // the `)` should clear the marker. In production it does not, because
-    // Lezer recovers an unclosed `(a1 1` as a `List` node and the regex
-    // still matches `a1`. We pin the actual behaviour so a future change
-    // away from this is a deliberate, observed event — not a silent
-    // regression.
-    //
-    // Whole-document replace bypasses clojure-mode's structural editing
-    // filters (which would otherwise turn a single-char delete of `)` into
-    // `(a1 1 ` with a balancing space).
+  it("removing the closing paren removes the incomplete form marker", () => {
     const { view, gutterField } = createView("(a1 1)");
     expect(readMarkers(view, gutterField)).toHaveLength(1);
 
@@ -205,12 +177,11 @@ describe("expression gutter: stays in sync with AST as document changes", () => 
     });
 
     const after = readMarkers(view, gutterField);
-    expect(after).toHaveLength(1);
-    expect(after[0]!.line).toBe(1);
+    expect(after).toHaveLength(0);
     view.destroy();
   });
 
-  it("walking through partial-typing states produces a marker only once `[ads][1-8]` matches", () => {
+  it("walking through partial-typing states produces a marker only for a complete assignment", () => {
     // The match regex (\b[ads][1-8]\b...) requires a complete output token
     // before a marker can be created. We replace the whole document at each
     // step instead of single-char inserts because clojure-mode's structural
@@ -234,11 +205,11 @@ describe("expression gutter: stays in sync with AST as document changes", () => 
     expect(readMarkers(view, gutterField)).toHaveLength(0);
 
     replaceAll("(a1");
-    // "(a1" — match lands; marker appears (Lezer recovers the unclosed list).
-    expect(readMarkers(view, gutterField)).toHaveLength(1);
+    // A recognized head alone is not a complete output assignment.
+    expect(readMarkers(view, gutterField)).toHaveLength(0);
 
     replaceAll("(a1 1)");
-    // "(a1 1)" — marker still on line 1, count unchanged across the close.
+    // Completing the assignment enables its marker.
     const final = readMarkers(view, gutterField);
     expect(final).toHaveLength(1);
     expect(final[0]!.line).toBe(1);

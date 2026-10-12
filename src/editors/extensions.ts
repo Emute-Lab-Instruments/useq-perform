@@ -15,6 +15,7 @@ import {
   createDefaultGutterConfig,
 } from "./extensions/expressionHighlights.ts";
 import { structuralCoreExtensions } from "./extensions/structure/adapter/extension.ts";
+import { operatorNamespaceExtensions } from "./extensions/operatorNamespaces.ts";
 // State-identity sidecar: opaque hidden IDs for stateful top-level forms
 // (synth today; future registrars extend via the classifier). Dependency-
 // injected so tests/Storybook can render the editor without synthesis
@@ -29,7 +30,7 @@ setEvalIntegrationConfig(createDefaultEvalIntegrationConfig());
 import { evalHighlightField } from "./extensions/evalHighlight.ts";
 import { deleteConfirmField } from "./extensions/deleteConfirmFlash.ts";
 import { visReadabilityPlugin } from "./extensions/visReadability.ts";
-import { probeExtensions } from "./extensions/probes.ts";
+import { createEphemeralProbeExtensions, probeExtensions } from "./extensions/probes.ts";
 import { inlineResultsField } from "./extensions/inlineResults.ts";
 import { diagnosticField } from "./extensions/diagnostics.ts";
 import { createLiveEditWidgetsExtension } from "./extensions/liveEdit/widgets.ts";
@@ -109,7 +110,7 @@ export const readOnlyExtensions = [
 // no user toggle needed.
 export const snippetReadOnlyExtensions = [
   ...readOnlyExtensions,
-  ...probeExtensions,
+  ...createEphemeralProbeExtensions(),
 ];
 
 // Core functionality extensions
@@ -139,16 +140,16 @@ export const guideEditorExtensions = [
 // The eval gutter (`lastEvaluatedExpressionField` + `createExpressionGutter`)
 // is independent of structural editing and lives in `expressionHighlights.ts`.
 
-// Base extensions combine core functionality
-export const baseExtensions = [
+// Core (non-probe) extension stack shared by every editable editor.
+const baseCoreExtensions = [
   baseKeymap,
   ...functionalExtensions,
   ...themeExtensions,
   ...default_clojure_extensions,
   ...structuralCoreExtensions(),
+  ...operatorNamespaceExtensions(),
   lastEvaluatedExpressionField,
   ...createExpressionGutter(createDefaultGutterConfig()),
-  ...probeExtensions,
   ...createLiveEditWidgetsExtension({ onValueChange: liveEditOnValueChange }),
   liveEditPasteHandler,
   createIdleEvalPlugin(),
@@ -159,10 +160,24 @@ export const baseExtensions = [
   visReadabilityPlugin,
 ];
 
+// Base extensions combine core functionality with the ephemeral probe set:
+// secondary documents (guide/snippet editors) keep their probes local and
+// do not share runtime slots. The main editor must install its production
+// probe set exactly once — see createMainEditorExtensions.
+export const baseExtensions = [
+  ...baseCoreExtensions,
+  ...createEphemeralProbeExtensions(),
+];
+
 /**
  * Build the production editor extension set around a session-owned identity
  * field. Embedded/guide editors use `baseExtensions` without silently
  * joining the main document's persistence or identity lifetime.
+ *
+ * The production `probeExtensions` are added here INSTEAD of the ephemeral
+ * set baked into `baseExtensions`, so the editor state carries exactly one
+ * `probeConfig` facet value (the facet reads `configs[0]`, so stacking two
+ * sets would make the winning config depend on array order).
  */
 export function createMainEditorExtensions(options: {
   identityExtensions: readonly import("@codemirror/state").Extension[];
@@ -170,7 +185,8 @@ export function createMainEditorExtensions(options: {
 }): import("@codemirror/state").Extension[] {
   return [
     ...mainEditorKeymap,
-    ...baseExtensions,
+    ...probeExtensions,
+    ...baseCoreExtensions,
     ...options.identityExtensions,
     updateListener,
     ...options.sessionExtensions,

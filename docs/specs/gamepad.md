@@ -19,7 +19,7 @@ layer: behavioural
 - `src/lib/gamepad/dispatcher.ts` — action firing, layer push/pop, store mutation
 - `src/lib/gamepad/hardware.ts` — Stage 1: snapshot diffing (`diffSnapshots`) to LogicalEvent[]
 - `src/lib/gamepad/index.ts` — full pipeline wiring: `createGamepadPipeline()`, re-exports
-- `src/lib/gamepad/paradigms/` — paradigm files: `modal-shift.ts`, `leader.ts`, `hydra.ts`, `chord-heavy.ts`, `picker.ts`
+- `src/lib/gamepad/paradigms/` — paradigm files: `modal-shift.ts`, `leader.ts`, `hydra.ts`, `chord-heavy.ts`, `radial.ts`
 - `src/lib/gamepad/gamepadManager.ts` — low-level Gamepad API polling
 - `src/contracts/gamepadChannels.ts` — axis channel registry and typed gamepad channels
 - `src/lib/keybindings/actions.ts` — `ActionDef.reversible`, `ReversibleActionId`, `NonReversibleActionId`
@@ -177,7 +177,7 @@ type Layer = {
 }
 ```
 
-4.2.1 A layer with `when:` and no `popOn:` is a **predicate-driven** (permanent / contextual) layer. Active iff `when(state)` is true. Examples: `picker` (when a menu is open), `structural` (when editor mode is structural), `global` (always).
+4.2.1 A layer with `when:` and no `popOn:` is a **predicate-driven** (permanent / contextual) layer. Active iff `when(state)` is true. Examples: `radial-menu` (when the radial menu is open), `structural` (when editor mode is structural), `global` (always).
 
 4.2.2 A layer with `popOn:` is a **transient layer**. It is pushed onto the transient stack imperatively by a leader binding (§4.5), and popped according to its policy. Transient layers MAY also have `when:`; the predicate is an additional liveness condition that, when false, pops the layer (§4.5.4).
 
@@ -271,17 +271,16 @@ const afterY: Layer = {
 ```ts
 type AxisChannelName =
   | 'manual-control'
-  | 'picker.angle'
-  | 'scrub'
-  | 'param-bind'
-  // extensible by registering at module init
+  | 'menu.left.angle'
+  | 'menu.right.angle'
+  // open-ended: any registered channel name (branded string)
 
 type AxisBindings = Readonly<Partial<Record<'left' | 'right', AxisChannelName>>>
 ```
 
 4.6.2 At every poll, for each stick, the system looks up the topmost active layer that binds that stick and publishes the `AxisFrame` to that channel. Layers below are not consulted for the same stick. If no active layer binds the stick, the frame is dropped.
 
-4.6.3 Axis channels are typed `TypedChannel<AxisFrame>` instances registered in `src/contracts/gamepadChannels.ts`. Subsystems (manual-control, radial picker, scrub) subscribe by channel name. Adding a new channel requires extending the `AxisChannelName` literal union and registering a channel instance — both centralised, both type-checked. (see `src/contracts/gamepadChannels.ts`)
+4.6.3 Axis channels are typed `TypedChannel<AxisFrame>` instances; channel names are `AxisChannelName`-branded strings (`src/lib/gamepad/types.ts`). Subsystems (manual control, the radial menu) subscribe by channel name. A new channel name only needs the publisher and subscriber to agree on the string — there is no central union to extend.
 
 4.6.4 Axis bindings have **no** `tap`/`hold` / eager-with-undo concerns. They are continuous and fire-and-forget.
 
@@ -357,7 +356,6 @@ const irreversibleActions = [
   'eval.now',
   'mode.insert', 'mode.structural', 'mode.toggle',
   'transport.start', 'transport.stop',
-  'picker.select', 'picker.cancel',
   // ...
 ] as const
 
@@ -452,7 +450,7 @@ const lbShifted: Layer = {
 }
 ```
 
-Layer order in the stack: `main-menu` > `picker` > `act-on` / `grab-mode` > `atom-edit` > `modal-lb-rb` > `modal-lb` > `modal-rb` > `insertion-mode` > `modal-base`. The `LB`/`RB` buttons bind nothing on `modal-base` — their sole role is to shift the layer. The atom-edit layer (§6.7) intercepts LB/RB taps when on a leaf atom and no modifier is held.
+Layer order in the stack: `main-menu` > `radial-menu` > `act-on` / `grab-mode` > `atom-edit` > `modal-lb-rb` > `modal-lb` > `modal-rb` > `insertion-mode` > `modal-base`. The `LB`/`RB` buttons bind nothing on `modal-base` — their sole role is to shift the layer. The atom-edit layer (§6.7) intercepts LB/RB taps when on a leaf atom and no modifier is held.
 
 ### 6.2 Leader (vim) (see `src/lib/gamepad/paradigms/leader.ts`)
 
@@ -606,15 +604,15 @@ This collapses "select target + choose verb + pick content" into a single chord 
   - Each D-pad press moves the node immediately; held repeats fire.
 - Exit gestures:
   - A → `actOn.drop`: commit position (no-op on tree — moves already applied), exit grab
-  - B → `actOn.cancelGrab`: batch-undo all moves back to the pre-grab state (restoring both tree and cursor), exit grab
+  - B → `actOn.cancelGrab`: undo the moves through the document's real history, restore the saved structural focus, and end the grab session
   - Y → `actOn.duplicateDrop`: exit grab (stub — duplicate-at-position semantics deferred)
-- Grab state is tracked in `src/lib/gamepad/grabState.ts` (module-level, not CodeMirror state). A snapshot of the document text and cursor paths is saved on entry, enabling cursor restoration on cancel. A separate CM `grabModeField` boolean drives the visual indicator.
-- The grab layer uses `when: () => isGrabActive()` (predicate-driven); it does not auto-timeout.
+- Each document owns one CodeMirror `GrabSession` field in `src/editors/grabSession.ts`. A non-null session means grab is active; it stores the original structural focus and move count. The visual indicator derives from that same session, with no mirrored boolean or module-global singleton. Grab lifecycle state is excluded from undo history: undo or redo must not resurrect an ended grab session.
+- The grab layer reads `state.grabActive` from the injected editor context; it does not auto-timeout. Dropping ends the session while retaining the applied document edits.
 
 ```ts
 const grabLayer: Layer = {
   name:   'grab-mode',
-  when:   () => isGrabActive(),
+  when:   (state) => state.grabActive === true,
   gestures: {
     [keyOf(tap('Left'))]:  'grab.moveLeft',
     [keyOf(held('Left'))]: 'grab.moveLeft',
@@ -629,7 +627,7 @@ const grabLayer: Layer = {
 };
 ```
 
-6.6.5 **Layer ordering.** The `act-on` and `grab-mode` layers sit above the structural base layers but below the picker/radial layers and the main-menu layer.
+6.6.5 **Layer ordering.** The `act-on` and `grab-mode` layers sit above the structural base layers but below the radial-menu layer and the main-menu layer.
 
 ### 6.7 Atom-manipulation layer (see [atom-manipulation.md](atom-manipulation.md))
 
@@ -694,7 +692,7 @@ const mainMenuLayer: Layer = {
 }
 ```
 
-6.8.1 The main-menu layer sits at the **highest** priority in the predicate-driven stack (above picker, above act-on, above everything). When open, it masks all other input.
+6.8.1 The main-menu layer sits at the **highest** priority in the predicate-driven stack (above the radial menu, above act-on, above everything). When open, it masks all other input.
 
 6.8.2 The L3+R3 chord binding in the base layer opens the menu; the same chord in the menu layer closes it (toggle behaviour).
 
@@ -810,7 +808,7 @@ src/lib/gamepad/
     leader.ts
     hydra.ts
     chord-heavy.ts
-    picker.ts         // always-present picker layer
+    radial.ts         // radial-menu layer (replaces the legacy picker layer)
   index.ts            // wiring
 
 src/contracts/gamepadChannels.ts   // axis channel registry only
@@ -829,7 +827,7 @@ test/lib/gamepad/
 
 10.1 **Action registry refactor.** The reversibility classification (§5.1) requires tagging every existing `ActionId`. The current `src/lib/keybindings/actions.ts` does not carry this metadata. Refactor scope is non-trivial; some actions (e.g. `eval.now`) are unambiguous, others (e.g. menu-driven inserts that themselves push a single edit) need adjudication.
 
-10.2 **Keyboard <-> gamepad action symmetry.** The picker layer defines a richer `picker.*` action namespace than today's `pickerNavigate` / `pickerSelect` channels. Moving the picker subsystem onto action dispatch is a separate piece of work; until it lands, the picker layer's bindings can target the existing channels via a `{kind:'channel', ch:..., payload:...}` escape hatch (option B in the brainstorm — kept available as a migration aid, not the long-term shape).
+10.2 **Keyboard <-> gamepad action symmetry.** The legacy picker layer and its `picker.*` action namespace were removed when the radial menu replaced that layer (§6.5, radial-menu.md §1). Radial-menu controls use the `menu.*` actions; no picker-channel migration path remains.
 
 10.3 **Multi-controller support.** All wording assumes a single connected gamepad. Multi-controller scenarios (two players, or split roles) are deferred. The store would gain a `controllerId` axis; bindings would gain optional controller filters.
 

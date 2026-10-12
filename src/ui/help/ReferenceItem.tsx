@@ -75,11 +75,13 @@ export const ReferenceItem: Component<{ entry: ReferenceEntry; targetVersion: Ve
         </Show>
         <button 
           class="doc-star-button" 
+          aria-pressed={isStarred()}
+          aria-label={isStarred() ? `Unstar ${props.entry.name}` : `Star ${props.entry.name}`}
           onClick={(e) => { e.stopPropagation(); toggleStarred(props.entry.name); }}
         >
-          {isStarred() ? "★" : "☆"}
+          <span aria-hidden="true">{isStarred() ? "★" : "☆"}</span>
         </button>
-        <span class="doc-expand-indicator">{isExpanded() ? "▼" : "▶"}</span>
+        <span class="doc-expand-indicator" aria-hidden="true">{isExpanded() ? "▼" : "▶"}</span>
       </div>
 
       <div

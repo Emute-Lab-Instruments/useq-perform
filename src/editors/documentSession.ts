@@ -10,6 +10,7 @@
 import type { Extension, StateField } from "@codemirror/state";
 import { EditorState } from "@codemirror/state";
 import { EditorView, type ViewUpdate } from "@codemirror/view";
+import { executeEditorCommand } from "./commands/editorCommandRouter.ts";
 
 import type { AppSettings } from "../lib/appSettings.ts";
 import {
@@ -144,14 +145,16 @@ class CodeMirrorDocumentSession implements DocumentSession {
   }
 
   replaceText(text: string): void {
-    this.view.dispatch({
-      changes: { from: 0, to: this.view.state.doc.length, insert: text },
-    });
+    executeEditorCommand(this.view, { kind: "replaceDocument", text, source: "system" });
   }
 
   insertText(text: string, position = 0): void {
     const safePosition = Math.max(0, Math.min(position, this.view.state.doc.length));
-    this.view.dispatch({ changes: { from: safePosition, insert: text } });
+    executeEditorCommand(this.view, {
+      kind: "applyChanges",
+      changes: { from: safePosition, insert: text },
+      source: "system",
+    });
   }
 
   setPersistenceSettings(settings: AppSettings): void {

@@ -1,7 +1,6 @@
 import type { EditorView } from "@codemirror/view";
 import type { ActionId } from "../lib/keybindings/actions";
 
-import { findNodeAt, getTrimmedRange } from "../editors/extensions/lezerHelpers";
 import {
   executeEditorCommand,
 } from "../editors/commands/editorCommandRouter.ts";
@@ -19,40 +18,6 @@ export interface ZenNavigationHandle {
    */
   onAction(actionId: ActionId): boolean;
   dispose(): void;
-}
-
-function deleteNodeAtCursor(view: EditorView): boolean {
-  if (!view) return false;
-  const selection = view.state.selection.main;
-  const node = findNodeAt(view.state, selection.from, selection.to);
-  if (!node) return false;
-  const range = getTrimmedRange(node, view.state);
-  if (!range) return false;
-
-  const doc = view.state.doc;
-  let whitespaceEnd = range.to;
-  const docLen = doc.length;
-  while (whitespaceEnd < docLen) {
-    const char = doc.sliceString(whitespaceEnd, whitespaceEnd + 1);
-    if (char === " " || char === "\t") {
-      whitespaceEnd += 1;
-    } else if (char === "\n") {
-      whitespaceEnd += 1;
-      break;
-    } else {
-      break;
-    }
-  }
-
-  return executeEditorCommand(view, {
-    kind: "replaceRange",
-    from: range.from,
-    to: whitespaceEnd,
-    insert: "",
-    selectionAnchor: range.from,
-    userEvent: "delete.node",
-    source: "gamepad",
-  });
 }
 
 function hideEditorCursor(view: EditorView): void {
@@ -88,7 +53,11 @@ export function bindZenGamepadNavigation(
     if (gate(actionId) === "block") return false;
 
     if (actionId === "edit.delete") {
-      if (deleteNodeAtCursor(view)) {
+      if (executeEditorCommand(view, {
+        kind: "structural",
+        action: "edit.delete",
+        source: "gamepad",
+      })) {
         hideEditorCursor(view);
         return true;
       }

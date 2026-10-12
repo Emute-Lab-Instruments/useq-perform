@@ -579,6 +579,7 @@ describe("drawSerialVisGL (pure path)", () => {
       expressions: {},
       settings: {
         windowDuration: 10,
+        historyHeadroom: 2, maxHistorySeconds: 120,
         sampleCount: 100,
         lineWidth: 1.5,
         futureDashed: true,
@@ -606,6 +607,7 @@ describe("drawSerialVisGL (pure path)", () => {
       expressions: {},
       settings: {
         windowDuration: 10,
+        historyHeadroom: 2, maxHistorySeconds: 120,
         sampleCount: 100,
         lineWidth: 1.5,
         futureDashed: true,
@@ -692,5 +694,39 @@ describe("computeAdaptivePastBufferRate (lever 3)", () => {
     expect(r4).not.toBeNull();
     expect(r2).toBe((r1 as number) / 2);
     expect(r4).toBe((r1 as number) / 4);
+  });
+});
+
+describe("background sampling gaps", () => {
+  it.each([false, true])("leaves missing history blank (step mode: %s)", (stepMode) => {
+    const samples = makeSamples([
+      [0, 0], [0.02, 1], [0.04, 0],
+      [5, 0.2], [5.02, 1], [5.04, 0],
+      [9, 0.5], // an isolated sample cannot form a line
+    ]);
+    const count = flattenSamples(samples, stepMode, 0, samples.length, 0.25);
+    const vertices = buildThickLineGeometry(count, 2, 0, 10, 0, 100, 1000, 100, 0.25);
+    const geometry = getThickScratch();
+    let before = 0;
+    let after = 0;
+    for (let i = 2; i < vertices; i++) {
+      const a = (i - 2) * 3;
+      const b = (i - 1) * 3;
+      const c = i * 3;
+      const area = (geometry[b] - geometry[a]) * (geometry[c + 1] - geometry[a + 1])
+        - (geometry[b + 1] - geometry[a + 1]) * (geometry[c] - geometry[a]);
+      if (Math.abs(area) < 1e-10) continue;
+      const times = [geometry[a + 2], geometry[b + 2], geometry[c + 2]];
+      expect(Math.max(...times) - Math.min(...times)).toBeLessThan(0.25);
+      if (Math.max(...times) < 1) before++;
+      if (Math.min(...times) > 4) after++;
+    }
+    expect(before).toBeGreaterThan(0);
+    expect(after).toBeGreaterThan(0);
+  });
+
+  it("does not draw a line between isolated samples", () => {
+    const count = flattenSamples(makeSamples([[0, 0], [5, 1]]), false);
+    expect(buildThickLineGeometry(count, 2, 0, 10, 0, 100, 1000, 100, 0.25)).toBe(0);
   });
 });

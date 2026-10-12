@@ -39,7 +39,6 @@ export function CalibrationSlider(props: CalibrationSliderProps) {
   let trackRef: HTMLDivElement | undefined;
   let rootRef: HTMLDivElement | undefined;
   let dragging = false;
-  let dragLastClientX = 0;
 
   const range = () => props.rangeCents ?? CALIBRATION_SLIDER_RANGE_CENTS;
   const snapTolerance = () =>
@@ -78,7 +77,6 @@ export function CalibrationSlider(props: CalibrationSliderProps) {
     e.preventDefault();
     rootRef.focus();
     dragging = true;
-    dragLastClientX = e.clientX;
     rootRef.setPointerCapture?.(e.pointerId);
     // Click on track jumps the handle to that position (§4.2 mouse click).
     dragToClientX(e.clientX);
@@ -87,7 +85,6 @@ export function CalibrationSlider(props: CalibrationSliderProps) {
   const onPointerMove = (e: PointerEvent) => {
     if (!dragging) return;
     e.preventDefault();
-    dragLastClientX = e.clientX;
     dragToClientX(e.clientX);
   };
 

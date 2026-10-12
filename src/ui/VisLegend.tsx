@@ -1,5 +1,7 @@
 import { For } from "solid-js";
 
+import "./vis-legend.css";
+
 export interface VisLegendChannel {
   channel: string;
   color: string | null;
@@ -19,36 +21,14 @@ export function VisLegend(props: VisLegendProps) {
         {(entry) => (
           <div
             class="vis-legend-entry"
-            style={{
-              display: "flex",
-              "align-items": "center",
-              gap: "6px",
-              opacity: entry.active ? "1" : "0.4",
-            }}
+            classList={{ "vis-legend-entry--inactive": !entry.active }}
+            style={{ "--swatch": entry.color ?? "transparent" }}
           >
             <div
               class="vis-legend-swatch"
-              style={{
-                width: "12px",
-                height: "12px",
-                "border-radius": "2px",
-                "background-color": entry.color ?? "transparent",
-                border: entry.color ? "none" : "1px solid rgba(255,255,255,0.3)",
-                "flex-shrink": "0",
-              }}
+              classList={{ "vis-legend-swatch--empty": !entry.color }}
             />
-            <span
-              class="vis-legend-label"
-              style={{
-                "font-size": "11px",
-                "font-family": "monospace",
-                "white-space": "nowrap",
-                overflow: "hidden",
-                "text-overflow": "ellipsis",
-              }}
-            >
-              {entry.label}
-            </span>
+            <span class="vis-legend-label">{entry.label}</span>
           </div>
         )}
       </For>

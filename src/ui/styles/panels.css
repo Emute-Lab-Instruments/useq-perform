@@ -113,3 +113,22 @@
     overflow-y: auto;
   }
 }
+
+/* Narrow viewports: auxiliary panels span the full width (see panel-chrome.css). */
+@media (max-width: 700px) {
+  .panel-aux {
+    left: 0;
+    right: 0;
+    min-width: 0;
+    max-width: none;
+    max-height: calc(100dvh - var(--top-toolbar-height, 0px));
+  }
+
+  .panel-nav-bar {
+    overflow-x: auto;
+  }
+
+  .panel-tab-button {
+    flex-shrink: 0;
+  }
+}

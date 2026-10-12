@@ -17,7 +17,10 @@ import {
   reportTransportConnectionChanged,
   announceRuntimeSession as announceFromService,
 } from "../runtime/runtimeSessionService.ts";
-import { devicePluggedIn as devicePluggedInChannel } from "../contracts/runtimeChannels";
+import {
+  devicePluggedIn as devicePluggedInChannel,
+  protocolReady as protocolReadyChannel,
+} from "../contracts/runtimeChannels";
 import { getStartupFlagsSnapshot } from "../runtime/startupContext.ts";
 
 import type { TransportContext } from "./types.ts";
@@ -33,6 +36,7 @@ import {
   initProtocol,
   resetProtocolState,
   sendHelloWithRetry,
+  getConnectedFirmwareIdentity,
 } from "./json-protocol.ts";
 
 // ── Module-level state ──────────────────────────────────────────────
@@ -41,6 +45,7 @@ let serialport: SerialPort | null = null;
 let connectedToModule = false;
 let flag_triggeringBootloader = false;
 let connectionInProgress = false;
+let unsubscribeProtocolReady: (() => void) | null = null;
 
 // ── Connection state ────────────────────────────────────────────────
 
@@ -113,7 +118,6 @@ async function checkForSavedPort(): Promise<SerialPort | null | undefined> {
   if (savedInfo) {
     const ports = await navigator.serial.getPorts();
     dbg("Ports", ports);
-
     return ports.find((port: SerialPort) => {
       const info = port.getInfo();
       return (
@@ -171,7 +175,7 @@ export function askForPortAndConnect(): void {
         connectToSerialPort(port);
       })
       .catch((err: unknown) => {
-        console.log("Error requesting port:", err);
+        console.warn("Error requesting port:", err);
         post("Error requesting port. Please try again.", "error");
       });
   } else {
@@ -207,7 +211,7 @@ export async function connectToSerialPort(port: SerialPort): Promise<boolean> {
     await setupConnectedPort(port);
     return true;
   } catch (err: unknown) {
-    console.log("Error connecting to serial:", err);
+    console.error("Error connecting to serial:", err);
     post(
       'Connection failed. See <a href="https://www.emutelabinstruments.co.uk/useqinfo/useq-editor/#troubleshooting">troubleshooting guide</a>',
       "error"
@@ -221,7 +225,7 @@ export async function connectToSerialPort(port: SerialPort): Promise<boolean> {
 async function setupConnectedPort(port: SerialPort): Promise<void> {
   resetProtocolState();
   setSerialPort(port);
-  setConnectedToModule(true);
+  setConnectedToModule(false);
 
   // Start reading with message callbacks
   startSerialReader(port, handleJsonMessage, handleLegacyTextMessage);
@@ -230,6 +234,15 @@ async function setupConnectedPort(port: SerialPort): Promise<void> {
   // completes or the attempt budget is exhausted.
   // Fire-and-forget: do not block port setup on handshake completion so the
   // stream reader can process the device's hello response concurrently.
+  unsubscribeProtocolReady?.();
+  unsubscribeProtocolReady = protocolReadyChannel.subscribe(() => {
+    // sendHelloWithRetry also publishes protocolReady when attempts are
+    // exhausted. Firmware identity is populated only by a completed JSON or
+    // legacy handshake, so an exhausted negotiation remains disconnected.
+    if (getConnectedFirmwareIdentity().protocolVersion !== null) {
+      setConnectedToModule(true);
+    }
+  });
   sendHelloWithRetry().catch((err) => {
     console.error("sendHelloWithRetry failed unexpectedly:", err);
   });
@@ -251,11 +264,13 @@ export async function disconnect(port?: SerialPort | null): Promise<void> {
         await port.close();
       }
     } catch (err) {
-      console.log("Error closing port:", err);
+      console.warn("Error closing port:", err);
       disconnectError = err;
     }
 
     if (port === serialport) {
+      unsubscribeProtocolReady?.();
+      unsubscribeProtocolReady = null;
       setConnectedToModule(false);
       if (disconnectError) {
         post("uSEQ disconnected with errors", "warn");

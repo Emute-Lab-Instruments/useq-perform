@@ -9,7 +9,6 @@
 import type { WebSerialHostPort, WasmRuntimePort } from "../contracts/runtimePorts.ts";
 import { visStore } from "../utils/visualisationStore.ts";
 import {
-  getLocalTime,
   isLocalTimeActive,
   notifyExternalTimeUpdate,
   pauseVisualisationRender,
@@ -59,6 +58,7 @@ export type {
 } from "../utils/visualisationStore.ts";
 export type { OutputRenderData } from "./visualisationBuffers.ts";
 export { DIGITAL_CHANNELS, SERIAL_VIS_CHANNELS } from "../utils/visualisationStore.ts";
+export { futureBoundaryMaxGapSeconds } from "./visualisationSampler.ts";
 
 let disposed = false;
 let probeGeneration = 0;
@@ -91,11 +91,9 @@ export const visualisationSession = Object.freeze({
 
   clock: Object.freeze({
     startRuntime: startVisualisationRuntime,
-    stopRuntime: stopVisualisationRuntime,
     setLocal: setLocalTimeMode,
     reset: resetLocalTime,
     isLocal: isLocalTimeActive,
-    localTime: getLocalTime,
     acceptHardwareTime: notifyExternalTimeUpdate,
     setNowSource: setVisualisationNowSource,
     drainForTests: _drainForTests,

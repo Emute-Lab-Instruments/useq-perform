@@ -269,6 +269,7 @@ export function flattenSamples(
   stepMode: boolean,
   start = 0,
   end: number = samples.length,
+  maxGapSeconds = Infinity,
 ): number {
   const from = Math.max(0, start);
   const to = Math.min(samples.length, end);
@@ -282,7 +283,8 @@ export function flattenSamples(
     const s = samples[i];
     const t = s.time;
     const v = s.value;
-    if (stepMode && i > from && prevValue !== v) {
+    if (stepMode && i > from && prevValue !== v &&
+        t - samples[i - 1].time <= maxGapSeconds) {
       scratch[w++] = t;
       scratch[w++] = prevValue;
     }
@@ -345,10 +347,11 @@ export function buildThickLineGeometry(
   yBottom: number,
   viewportW: number,
   viewportH: number,
+  maxGapSeconds = Infinity,
 ): number {
   if (vertexCount < 2) return 0;
 
-  const maxVerts = vertexCount * 6;
+  const maxVerts = vertexCount * 8;
   ensureThickScratch(maxVerts * THICK_FLOATS_PER_VERTEX);
 
   const windowSpan = Math.max(windowEnd - windowStart, 1e-6);
@@ -388,47 +391,66 @@ export function buildThickLineGeometry(
     return [-dy / len, dx / len];
   }
 
-  // First segment cap
-  {
-    const [nx, ny] = segmentNormal(0);
-    emit(cx[0] + nx * hwX, cy[0] + ny * hwY, times[0]);
-    emit(cx[0] - nx * hwX, cy[0] - ny * hwY, times[0]);
-  }
-
-  for (let i = 1; i < vertexCount - 1; i++) {
-    const [n0x, n0y] = segmentNormal(i - 1);
-    const [n1x, n1y] = segmentNormal(i);
-
-    const mx = (n0x + n1x) * 0.5;
-    const my = (n0y + n1y) * 0.5;
-    const mLen = Math.sqrt(mx * mx + my * my);
-
-    if (mLen < 0.7) {
-      // Sharp turn (>~90°) — bevel join: end old segment, degenerate
-      // restart, begin new segment.  Prevents miter offset blowup.
-      emit(cx[i] + n0x * hwX, cy[i] + n0y * hwY, times[i]);
-      emit(cx[i] - n0x * hwX, cy[i] - n0y * hwY, times[i]);
-      emit(cx[i] - n0x * hwX, cy[i] - n0y * hwY, times[i]);
-      emit(cx[i] + n1x * hwX, cy[i] + n1y * hwY, times[i]);
-      emit(cx[i] + n1x * hwX, cy[i] + n1y * hwY, times[i]);
-      emit(cx[i] - n1x * hwX, cy[i] - n1y * hwY, times[i]);
-    } else {
-      const dot = (n0x * mx + n0y * my) / mLen;
-      const miterFactor = dot > 0.5 ? 1 / dot : 2;
-      const scale = miterFactor / mLen;
-      const ox = mx * scale * hwX;
-      const oy = my * scale * hwY;
-      emit(cx[i] + ox, cy[i] + oy, times[i]);
-      emit(cx[i] - ox, cy[i] - oy, times[i]);
+  // Each uninterrupted run is a separate strip. Duplicate cap vertices
+  // make the bridge degenerate, preserving history without drawing a ramp
+  // across time where the browser supplied no samples.
+  for (let first = 0; first < vertexCount;) {
+    let end = first + 1;
+    while (end < vertexCount && times[end] - times[end - 1] <= maxGapSeconds) end++;
+    if (end - first < 2) {
+      first = end;
+      continue;
     }
-  }
+    if (w > 0) {
+      emit(thickScratch[w - 3], thickScratch[w - 2], thickScratch[w - 1]);
+      const [nx, ny] = segmentNormal(first);
+      emit(cx[first] + nx * hwX, cy[first] + ny * hwY, times[first]);
+    }
 
-  // Last segment cap
-  {
-    const last = vertexCount - 1;
-    const [nx, ny] = segmentNormal(last - 1);
-    emit(cx[last] + nx * hwX, cy[last] + ny * hwY, times[last]);
-    emit(cx[last] - nx * hwX, cy[last] - ny * hwY, times[last]);
+    // First segment cap
+    {
+      const [nx, ny] = segmentNormal(first);
+      emit(cx[first] + nx * hwX, cy[first] + ny * hwY, times[first]);
+      emit(cx[first] - nx * hwX, cy[first] - ny * hwY, times[first]);
+    }
+
+    for (let i = first + 1; i < end - 1; i++) {
+      const [n0x, n0y] = segmentNormal(i - 1);
+      const [n1x, n1y] = segmentNormal(i);
+
+      const mx = (n0x + n1x) * 0.5;
+      const my = (n0y + n1y) * 0.5;
+      const mLen = Math.sqrt(mx * mx + my * my);
+
+      if (mLen < 0.7) {
+        // Sharp turn (>~90°) — bevel join: end old segment, degenerate
+        // restart, begin new segment.  Prevents miter offset blowup.
+        emit(cx[i] + n0x * hwX, cy[i] + n0y * hwY, times[i]);
+        emit(cx[i] - n0x * hwX, cy[i] - n0y * hwY, times[i]);
+        emit(cx[i] - n0x * hwX, cy[i] - n0y * hwY, times[i]);
+        emit(cx[i] + n1x * hwX, cy[i] + n1y * hwY, times[i]);
+        emit(cx[i] + n1x * hwX, cy[i] + n1y * hwY, times[i]);
+        emit(cx[i] - n1x * hwX, cy[i] - n1y * hwY, times[i]);
+      } else {
+        const dot = (n0x * mx + n0y * my) / mLen;
+        const miterFactor = dot > 0.5 ? 1 / dot : 2;
+        const scale = miterFactor / mLen;
+        const ox = mx * scale * hwX;
+        const oy = my * scale * hwY;
+        emit(cx[i] + ox, cy[i] + oy, times[i]);
+        emit(cx[i] - ox, cy[i] - oy, times[i]);
+      }
+    }
+
+    // Last segment cap
+    {
+      const last = end - 1;
+      const [nx, ny] = segmentNormal(last - 1);
+      emit(cx[last] + nx * hwX, cy[last] + ny * hwY, times[last]);
+      emit(cx[last] - nx * hwX, cy[last] - ny * hwY, times[last]);
+    }
+
+    first = end;
   }
 
   return w / THICK_FLOATS_PER_VERTEX;

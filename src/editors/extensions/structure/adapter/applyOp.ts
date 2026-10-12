@@ -1,37 +1,22 @@
 /**
- * Apply a structural op against the editor's current core State and dispatch
- * the resulting changes back to CodeMirror.
- *
- * Strategy (round 2, per task brief):
- *   - If the op only changed the cursor (tree identity unchanged), dispatch
- *     just a `setStructState` effect.
- *   - If the op mutated the tree:
- *     1. Find which top-level form (document child) was affected by walking
- *        the new cursor's parent chain. If the change spans multiple
- *        top-level forms (rare; e.g. raise from the doc root) we re-render
- *        the entire document. This is intentionally coarse — minimal-diff
- *        edits are out of scope.
- *     2. Print the affected top-level form (or the whole document) and
- *        replace the corresponding source range in a CodeMirror transaction.
- *     3. After the transaction's doc-change re-parse, the state field
- *        refreshes the tree+idIndex with fresh ids, and `cursorPath` re-
- *        derives the cursor onto the new tree.
- *
- * Whitespace/comments inside the affected form are reformatted. Documented in
- * the run report.
+ * Application API for pure AST operations. Keyboard, gamepad and menu operations
+ * all commit through commitMutation: one source change with intended focus,
+ * formatting and undo ownership. The CodeMirror document remains canonical.
  */
 
-import type { ChangeSpec } from "@codemirror/state";
+import { Transaction, type ChangeSpec } from "@codemirror/state";
+import { isolateHistory } from "@codemirror/commands";
 import type { EditorView } from "@codemirror/view";
 
+import { findById } from "../core/index.ts";
 import type { Cursor, OpResult, State, Tree } from "../core/index.ts";
 import { pathOf } from "../core/traversal.ts";
 import { getAppSettings } from "../../../../runtime/appSettingsRepository.ts";
-import { pathsFromCursorSet, rederiveCursors } from "./cursorPath.ts";
+import { captureStructuralFocus } from "./cursorPath.ts";
 import { formatNode, printNode, printNodeWithBreaks } from "./printTree.ts";
-import { indentRangeToFixedPoint } from "./indentFixedPoint.ts";
-import { setStructState, structField } from "./stateField.ts";
-import { treeFromLezer, type IdIndex } from "./treeFromLezer.ts";
+import { planIndentation } from "./indentFixedPoint.ts";
+import { setIntendedFocus, structField, type StructFieldValue } from "./stateField.ts";
+import type { IdIndex } from "./treeFromLezer.ts";
 
 interface NoOpEntry {
   cursor: Cursor;
@@ -65,6 +50,7 @@ function getNodePrinter(strategy: AutoFormatStrategy): NodePrinter {
 export function applyOp(
   view: EditorView,
   op: (s: State) => OpResult,
+  userEvent = "structure.mutate",
 ): boolean {
   const value = view.state.field(structField, false);
   if (!value) return false;
@@ -84,36 +70,52 @@ export function applyOp(
     }
   }
 
-  const after = result.state;
+  return commitMutation(view, value, result.state, userEvent);
+}
 
-  // Cursor-only update: tree identity unchanged.
+/** The sole commit boundary for AST operations, including menu verbs. */
+function commitMutation(
+  view: EditorView,
+  value: StructFieldValue,
+  after: State,
+  userEvent: string,
+): boolean {
+  const before = value.state;
+  if (after.tree === before.tree && cursorsEqual(after.cursors, before.cursors)) return false;
+
+  const focus = setIntendedFocus.of(captureStructuralFocus(after));
   if (after.tree === before.tree) {
-    if (after.cursors === before.cursors || cursorsEqual(before.cursors, after.cursors)) {
-      return false;
-    }
-    view.dispatch({
-      effects: setStructState.of({
-        state: after,
-        idIndex: value.idIndex,
-        cursorPaths: pathsFromCursorSet(after.cursors, after.tree),
-      }),
-      scrollIntoView: true,
-    });
+    view.dispatch({ effects: focus, annotations: Transaction.addToHistory.of(false), scrollIntoView: true });
     scrollPrimaryIntoView(view);
     return true;
   }
 
-  // Tree changed — derive a text edit. Find the smallest top-level form
-  // ancestor of the new primary cursor's focus that we can re-render.
-  const affectedTopLevel = findAffectedTopLevelIndex(before.tree, after.tree);
+  const index = findAffectedTopLevelIndex(before.tree, after.tree);
+  const range = index === null ? undefined : value.idIndex.get(before.tree.root.children[index].id);
   const strategy = getAutoFormatStrategy();
   const print = getNodePrinter(strategy);
-  if (affectedTopLevel === null) {
-    // Whole-doc rerender fallback.
-    return dispatchWholeDocReplace(view, before, value.idIndex, after, print, strategy);
-  }
+  const changes = range && index !== null
+    ? { from: range.from, to: range.to, insert: print(after.tree.root.children[index]) }
+    : planWholeDocChange(view, before, value.idIndex, after, print);
 
-  return dispatchTopLevelReplace(view, before, value.idIndex, after, affectedTopLevel, print, strategy);
+  let changeSet = view.state.changes(changes);
+  if (strategy === "indent-fixed-point") {
+    const draft = view.state.update({ changes: changeSet, filter: false }).state;
+    const lo = range ? changeSet.mapPos(range.from, -1) : 0;
+    const hi = range ? changeSet.mapPos(range.to, 1) : draft.doc.length;
+    changeSet = changeSet.compose(planIndentation(draft, lo, hi));
+  }
+  view.dispatch({
+    changes: changeSet,
+    effects: focus,
+    // The AST printer owns formatting; clojure-mode must not replace this transaction.
+    filter: false,
+    userEvent,
+    annotations: isolateHistory.of("full"),
+    scrollIntoView: true,
+  });
+  scrollPrimaryIntoView(view);
+  return true;
 }
 
 /**
@@ -255,199 +257,56 @@ interface SegmentAlignment {
  * forms, or no old node ids available), in which case the caller falls back
  * to a single whole-document change.
  */
-function buildSurgicalChanges(
-  seg: SegmentAlignment,
-): ChangeSpec[] | null {
-  const { oldRanges, oldNodeIds, newNodeIds, printed, gaps } = seg;
-  if (oldRanges.length === 0 || printed.length === 0) return null;
-  if (oldNodeIds.length !== oldRanges.length) return null;
+function buildSurgicalChanges(seg: SegmentAlignment, docText: string): ChangeSpec[] | null {
+  const { oldRanges, oldNodeIds, newNodeIds, printed, gaps, leadingText, trailingText } = seg;
+  if (!oldRanges.length || !printed.length) return null;
 
-  // Build a position-aligned plan: for each new form, decide whether it is
-  // "aligned" with the old form at the same structural position (same node
-  // id), "shifted" (same node id but at a different position), or "new"
-  // (no matching old id).
-  //
-  // We use a single linear pass that mirrors how the structural core
-  // mutates the tree: most operations change top-level form count by ±1
-  // near a single boundary, leaving the rest of the list intact. So we
-  // align a common prefix and a common suffix by node id, and consolidate
-  // the divergent middle.
+  // Retain source-range continuity for the surviving prefix and suffix.
+  let prefix = 0;
+  while (prefix < Math.min(oldNodeIds.length, newNodeIds.length) && oldNodeIds[prefix] === newNodeIds[prefix]) prefix++;
+  let suffix = 0;
+  while (suffix < Math.min(oldNodeIds.length - prefix, newNodeIds.length - prefix) &&
+    oldNodeIds[oldNodeIds.length - 1 - suffix] === newNodeIds[newNodeIds.length - 1 - suffix]) suffix++;
+  if (prefix + suffix === 0) return null;
 
-  // Longest common prefix by node id.
-  let prefixLen = 0;
-  const maxPrefix = Math.min(oldNodeIds.length, newNodeIds.length);
-  while (
-    prefixLen < maxPrefix &&
-    oldNodeIds[prefixLen] === newNodeIds[prefixLen]
-  ) {
-    prefixLen++;
-  }
-
-  // Longest common suffix by node id, not overlapping the prefix.
-  let suffixLen = 0;
-  const maxSuffix = Math.min(
-    oldNodeIds.length - prefixLen,
-    newNodeIds.length - prefixLen,
-  );
-  while (
-    suffixLen < maxSuffix &&
-    oldNodeIds[oldNodeIds.length - 1 - suffixLen] ===
-      newNodeIds[newNodeIds.length - 1 - suffixLen]
-  ) {
-    suffixLen++;
-  }
-
-  // Edge case: every form aligned (no divergence). Emit one change per
-  // surviving form whose printed text differs from its old source. If
-  // nothing changed, return an empty array (the caller short-circuits).
-  if (
-    prefixLen === oldNodeIds.length &&
-    prefixLen === newNodeIds.length
-  ) {
-    return perFormChangesForSurvivors(seg, prefixLen, 0);
-  }
-
-  // Prefix forms: per-form surgical changes for those whose text changed.
-  // Suffix forms: same. Middle forms: consolidated wholesale change.
+  // The surgical edits must reproduce exactly the same source as the full
+  // printer, including separators when forms are inserted or removed.
+  let text = leadingText;
+  const newRanges = printed.map((form, index) => {
+    if (index) text += gaps[index - 1] ?? " ";
+    const from = text.length;
+    text += form;
+    return { from, to: text.length };
+  });
+  text += trailingText;
   const changes: ChangeSpec[] = [];
-  // Prefix surviving forms.
-  changes.push(...perFormChangesForSurvivors(seg, prefixLen, 0));
-
-  // Middle: one consolidated change covering every divergent old form's
-  // range, with the printed text of every divergent new form joined by
-  // inter-form gaps.
-  const middleOldStart = prefixLen;
-  const middleOldEnd = oldRanges.length - suffixLen;
-  const middleNewStart = prefixLen;
-  const middleNewEnd = printed.length - suffixLen;
-  const middleOldCount = middleOldEnd - middleOldStart;
-  const middleNewCount = middleNewEnd - middleNewStart;
-  if (middleOldCount > 0 || middleNewCount > 0) {
-    // The change must cover the span from the start of the first old form
-    // in the middle (or, when the old middle is empty, the boundary
-    // BETWEEN the prefix and suffix old forms) through the end of the last
-    // old form in the middle (or that same boundary).
-    //
-    // When the old middle is empty (e.g. a brand-new top-level form was
-    // inserted between prefix and suffix), `from === to` and CodeMirror
-    // treats it as an insertion at that position. The insertion point is
-    // the end of the last prefix form (`oldRanges[prefixLen-1].to`), or
-    // the start of the first suffix form (`oldRanges[oldRanges.length -
-    // suffixLen].from`), whichever exists. When both prefix and suffix
-    // are empty (the whole document changed), we use position 0.
-    //
-    // When the new middle is empty (e.g. prefix+suffix collapsed onto each
-    // other after a deletion), the change is a deletion of [from, to).
-    let from: number;
-    let to: number;
-    if (middleOldCount > 0) {
-      from = oldRanges[middleOldStart]!.from;
-      to = oldRanges[middleOldEnd - 1]!.to;
-    } else if (prefixLen > 0) {
-      // Insertion immediately after the last prefix form.
-      from = oldRanges[prefixLen - 1]!.to;
-      to = from;
-    } else if (suffixLen > 0) {
-      // Insertion immediately before the first suffix form.
-      from = oldRanges[oldRanges.length - suffixLen]!.from;
-      to = from;
-    } else {
-      // No prefix, no suffix, no old middle → entire doc replaced.
-      from = 0;
-      to = oldRanges[oldRanges.length - 1]!.to;
-    }
-    const middleParts: string[] = [];
-    for (let i = middleNewStart; i < middleNewEnd; i++) {
-      middleParts.push(printed[i]!);
-      if (i + 1 < middleNewEnd) {
-        // Inside the middle span, prefer the original inter-form gap
-        // when one is recorded at this index; otherwise default to a
-        // single space (NEW_SIBLING_GAP semantics from §5.2.3).
-        middleParts.push(i < gaps.length ? gaps[i]! : " ");
-      }
-    }
-    changes.push({ from, to, insert: middleParts.join("") });
-  }
-
-  // Suffix surviving forms. Their old source ranges are at the END of the
-  // old doc; we emit per-form changes so their identity is preserved.
-  changes.push(...perFormChangesForSuffix(seg, suffixLen));
-
+  const replace = (from: number, to: number, insert: string) => {
+    if (docText.slice(from, to) !== insert) changes.push({ from, to, insert });
+  };
+  let oldEnd = 0;
+  let newEnd = 0;
+  const keep = (oldIndex: number, newIndex: number) => {
+    const oldRange = oldRanges[oldIndex];
+    const newRange = newRanges[newIndex];
+    replace(oldEnd, oldRange.from, text.slice(newEnd, newRange.from));
+    replace(oldRange.from, oldRange.to, printed[newIndex]);
+    oldEnd = oldRange.to;
+    newEnd = newRange.to;
+  };
+  for (let i = 0; i < prefix; i++) keep(i, i);
+  for (let i = suffix; i > 0; i--) keep(oldRanges.length - i, newRanges.length - i);
+  replace(oldEnd, docText.length, text.slice(newEnd));
   return changes;
 }
 
-/**
- * Emit per-form surgical changes for the prefix forms whose printed text
- * differs from their old source slice. Forms whose printed text matches
- * their old source emit no change (they're already correct in the doc).
- */
-function perFormChangesForSurvivors(
-  seg: SegmentAlignment,
-  count: number,
-  _offsetUnused: number,
-): ChangeSpec[] {
-  const { oldRanges, printed } = seg;
-  const out: ChangeSpec[] = [];
-  for (let i = 0; i < count; i++) {
-    const range = oldRanges[i]!;
-    const original = originalSlice(range);
-    const next = printed[i]!;
-    if (original !== next) {
-      out.push({ from: range.from, to: range.to, insert: next });
-    }
-  }
-  return out;
-}
-
-/**
- * Emit per-form surgical changes for the suffix forms (the last `count`
- * top-level forms). Same preserve-identity semantics as the prefix.
- */
-function perFormChangesForSuffix(
-  seg: SegmentAlignment,
-  count: number,
-): ChangeSpec[] {
-  const { oldRanges, printed } = seg;
-  const out: ChangeSpec[] = [];
-  for (let i = 0; i < count; i++) {
-    const oldIdx = oldRanges.length - 1 - i;
-    const newIdx = printed.length - 1 - i;
-    const range = oldRanges[oldIdx]!;
-    const original = originalSlice(range);
-    const next = printed[newIdx]!;
-    if (original !== next) {
-      out.push({ from: range.from, to: range.to, insert: next });
-    }
-  }
-  return out;
-}
-
-/**
- * Mutable reference to the original document text captured per
- * `dispatchWholeDocReplace` call. `buildSurgicalChanges` reads the original
- * source slice of each form via this closure to decide whether a surviving
- * form's printed text actually changed.
- */
-let _originalDocText = "";
-function _setOriginalDoc(s: string): void {
-  _originalDocText = s;
-}
-function originalSlice(range: { from: number; to: number }): string {
-  return _originalDocText.slice(range.from, range.to);
-}
-
-function dispatchWholeDocReplace(
+function planWholeDocChange(
   view: EditorView,
   before: State,
   beforeIdIndex: IdIndex,
   after: State,
   print: NodePrinter,
-  strategy: AutoFormatStrategy,
-): boolean {
+): ChangeSpec {
   const docText = view.state.doc.toString();
-  // Install the original doc so buildSurgicalChanges can compare printed
-  // text against the original source slice of each form.
-  _setOriginalDoc(docText);
   const text = buildDocWithPreservedGaps(docText, before, beforeIdIndex, after, print);
 
   // Build the structural alignment between old and new top-level forms.
@@ -494,109 +353,13 @@ function dispatchWholeDocReplace(
   // can preserve stateful-form identity through range continuity
   // (VAL-ID-004 / VAL-ID-005). Falls back to a single whole-doc change
   // when the alignment is degenerate.
-  const surgical = buildSurgicalChanges(seg);
+  const surgical = buildSurgicalChanges(seg, docText);
   const changeSpec: ChangeSpec =
     surgical !== null && surgical.length > 0
       ? surgical
       : { from: 0, to: view.state.doc.length, insert: text };
 
-  // Surgical analysis produced zero changes AND the doc text is unchanged:
-  // short-circuit (the structural state may still need to be updated via
-  // setCursorFromState below — that's handled outside).
-  if (surgical !== null && surgical.length === 0 && text === docText) {
-    setCursorFromState(view, after);
-    if (strategy === "indent-fixed-point") {
-      indentRangeToFixedPoint(view, 0, view.state.doc.length);
-      setCursorFromState(view, after);
-    }
-    scrollPrimaryIntoView(view);
-    return true;
-  }
-
-  view.dispatch({
-    changes: changeSpec,
-    userEvent: "structure.mutate",
-    scrollIntoView: true,
-  });
-  // After dispatch, the state field will have re-parsed. Now move the
-  // cursor focus by re-deriving it from the new state's path.
-  setCursorFromState(view, after);
-  if (strategy === "indent-fixed-point") {
-    indentRangeToFixedPoint(view, 0, view.state.doc.length);
-    setCursorFromState(view, after);
-  }
-  scrollPrimaryIntoView(view);
-  return true;
-}
-
-function dispatchTopLevelReplace(
-  view: EditorView,
-  before: State,
-  oldIdIndex: IdIndex,
-  after: State,
-  topLevelIndex: number,
-  print: NodePrinter,
-  strategy: AutoFormatStrategy,
-): boolean {
-  // Source range to replace = original range of the OLD tree's top-level
-  // form at `topLevelIndex`. We look it up via the previous idIndex.
-  const oldRoot = before.tree.root;
-  const oldChild = oldRoot.children[topLevelIndex];
-  if (!oldChild) {
-    return dispatchWholeDocReplace(view, before, oldIdIndex, after, print, strategy);
-  }
-  const oldRange = oldIdIndex.get(oldChild.id);
-  if (!oldRange) {
-    return dispatchWholeDocReplace(view, before, oldIdIndex, after, print, strategy);
-  }
-  const newRoot = after.tree.root;
-  const newChild = newRoot.children[topLevelIndex];
-  if (!newChild) {
-    // The mutation removed this top-level form. Whole-doc re-render covers
-    // this rare case.
-    return dispatchWholeDocReplace(view, before, oldIdIndex, after, print, strategy);
-  }
-  const text = print(newChild);
-  const change: ChangeSpec = {
-    from: oldRange.from,
-    to: oldRange.to,
-    insert: text,
-  };
-  view.dispatch({
-    changes: change,
-    userEvent: "structure.mutate",
-    scrollIntoView: true,
-  });
-  setCursorFromState(view, after);
-  if (strategy === "indent-fixed-point") {
-    // Re-indent only the affected range. After the dispatch above, the new
-    // range is [oldRange.from, oldRange.from + text.length).
-    indentRangeToFixedPoint(view, oldRange.from, oldRange.from + text.length);
-    setCursorFromState(view, after);
-  }
-  scrollPrimaryIntoView(view);
-  return true;
-}
-
-/**
- * After a doc-change transaction, the state field re-parsed and re-derived
- * cursors from saved paths. But the *intended* paths come from the post-op
- * state (the ones we captured before dispatching). We need to overwrite the
- * field's value with the freshly-built tree + the intended cursor paths
- * mapped onto it.
- */
-function setCursorFromState(view: EditorView, after: State): void {
-  // Re-parse against the now-current doc to get the fresh tree + idIndex.
-  const { tree, idIndex } = treeFromLezer(view.state);
-  const intendedPaths = pathsFromCursorSet(after.cursors, after.tree);
-  const cursors = rederiveCursors(intendedPaths, tree);
-  view.dispatch({
-    effects: setStructState.of({
-      state: { tree, cursors },
-      idIndex,
-      cursorPaths: pathsFromCursorSet(cursors, tree),
-    }),
-  });
+  return surgical !== null && surgical.length === 0 && text === docText ? [] : changeSpec;
 }
 
 /**
@@ -618,7 +381,7 @@ function cursorsEqual(
 
 function cursorEqual(a: Cursor, b: Cursor): boolean {
   if (a.kind !== b.kind) return false;
-  if (a.kind === "node" && b.kind === "node") return a.target === b.target;
+  if (a.kind === "node" && b.kind === "node") return a.target === b.target && (a.phase ?? "pre") === (b.phase ?? "pre");
   if (a.kind === "range" && b.kind === "range") {
     return a.parent === b.parent && a.start === b.start && a.end === b.end && a.anchor === b.anchor;
   }
@@ -662,8 +425,14 @@ function scrollPrimaryIntoView(view: EditorView): void {
   // Only move the selection if it isn't already inside the range, to avoid
   // spurious selection churn during keyboard typing.
   const sel = view.state.selection.main;
-  if (sel.from < range.from || sel.from > range.to) {
-    view.dispatch({ selection: { anchor }, scrollIntoView: true });
+  const isHole = c.kind === "node" && findById(value.state.tree.root, c.target)?.kind === "hole";
+  if (isHole ? sel.from !== range.from || sel.to !== range.to : sel.from < range.from || sel.from > range.to) {
+    view.dispatch({
+      selection: { anchor, head: isHole ? range.to : anchor },
+      annotations: Transaction.addToHistory.of(false),
+      effects: setIntendedFocus.of(captureStructuralFocus(value.state)),
+      scrollIntoView: true,
+    });
   }
 }
 

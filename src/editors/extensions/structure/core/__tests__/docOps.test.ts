@@ -1,12 +1,12 @@
 /**
  * Tests for document-root bulk operations (§5.3).
  */
-import { beforeEach, describe, expect, it } from "vitest";
+import { describe, expect, it } from "vitest";
 
 import { __resetIdCounterForTests, defaultIdGen } from "../types.ts";
 import { docDeleteAll, docSelectAll } from "../docOps.ts";
-import { doc, list, num, pp, stateOn, sym } from "./builders.ts";
-import { nodeCursor, singleCursor } from "../types.ts";
+import { doc, list, num, stateOn, sym } from "./builders.ts";
+import { nodeCursor } from "../types.ts";
 
 function setup() {
   __resetIdCounterForTests();

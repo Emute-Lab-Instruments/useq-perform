@@ -3,6 +3,9 @@ import { describe, it, expect, vi } from "vitest";
 import { ReferenceFilters } from "./ReferenceFilters";
 
 const defaultProps = () => ({
+  searchQuery: "",
+  onSearchChange: vi.fn(),
+  connectedVersionString: undefined as string | undefined,
   versionOptions: [
     { raw: "1.0.0", major: 1, minor: 0, patch: 0 },
     { raw: "1.1.0", major: 1, minor: 1, patch: 0 },

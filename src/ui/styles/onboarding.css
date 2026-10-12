@@ -6,14 +6,14 @@
   right: 10px;
   max-width: 340px;
   display: flex;
-  align-items: flex-start;
+  flex-direction: column;
   gap: 8px;
-  padding: 8px 12px;
+  padding: 10px 12px;
   background: var(--panel-bg, rgba(30, 30, 30, 0.95));
   border: 1px solid var(--panel-border, rgba(255, 255, 255, 0.2));
   border-radius: var(--panel-border-radius, 2px);
   backdrop-filter: blur(12px);
-  z-index: 999;
+  z-index: calc(var(--z-modal-backdrop, 1000) - 1);
   pointer-events: auto;
   font-family: var(--code-font, monospace);
   font-size: 0.8em;
@@ -34,6 +34,12 @@
   }
 }
 
+@media (prefers-reduced-motion: reduce) {
+  .onboarding-banner {
+    animation: none;
+  }
+}
+
 .onboarding-banner__text {
   flex: 1;
 }
@@ -48,7 +54,21 @@
   box-shadow: 0 2px 12px rgba(0, 0, 0, 0.5);
 }
 
+.onboarding-banner__actions,
+.onboarding-banner__dismiss-row {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.onboarding-banner__dismiss-row {
+  justify-content: flex-end;
+  gap: 10px;
+}
+
 .onboarding-banner__connect,
+.onboarding-banner__wasm,
 .onboarding-banner__dismiss {
   flex-shrink: 0;
   padding: 2px 8px;
@@ -64,6 +84,7 @@
 }
 
 .onboarding-banner__connect:hover,
+.onboarding-banner__wasm:hover,
 .onboarding-banner__dismiss:hover {
   background: var(--panel-item-hover-bg, rgba(255, 255, 255, 0.1));
   border-color: var(--accent-color, #00ff41);
@@ -74,4 +95,24 @@
 .onboarding-banner__connect {
   border-color: var(--accent-color, #00ff41);
   color: var(--accent-color, #00ff41);
+}
+
+/* Shown in place of the WASM action when the browser cannot run it. */
+.onboarding-banner__wasm-note {
+  color: var(--status-warn, #ffcc66);
+  font-size: 0.85em;
+}
+
+.onboarding-banner__dismiss {
+  border: none;
+  background: none;
+  color: var(--text-secondary, rgba(248, 248, 242, 0.6));
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  padding: 2px 0;
+}
+
+.onboarding-banner__dismiss:hover {
+  background: none;
+  color: var(--text-primary, #f8f8f2);
 }

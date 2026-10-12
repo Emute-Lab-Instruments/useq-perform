@@ -14,7 +14,6 @@ export type {
   WriteJsonRequestOptions,
   SendJsonEvalOptions,
   ProtocolState,
-  BufferMapFunction,
   TransportContext,
 } from "./types.ts";
 
@@ -66,7 +65,6 @@ export {
 // ── Stream parser ───────────────────────────────────────────────────
 export {
   serialBuffers,
-  serialMapFunctions,
   serialReader,
   readingActive,
   serialOutputBufferRouting,

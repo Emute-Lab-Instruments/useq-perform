@@ -1,0 +1,40 @@
+/*
+ * Vis legend styles (visualisation.md — channel legend).
+ *
+ * Layout/typography live here; the only dynamic value is the swatch colour,
+ * which the component provides as the `--swatch` custom property. Inactive
+ * entries are dimmed via the `vis-legend-entry--inactive` modifier.
+ */
+
+.vis-legend-entry {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  opacity: 1;
+}
+
+.vis-legend-entry--inactive {
+  opacity: 0.4;
+}
+
+.vis-legend-swatch {
+  width: 12px;
+  height: 12px;
+  border-radius: 2px;
+  background-color: var(--swatch, transparent);
+  border: none;
+  flex-shrink: 0;
+}
+
+/* Channels without a colour show an empty outlined swatch. */
+.vis-legend-swatch--empty {
+  border: 1px solid var(--panel-border, rgba(255, 255, 255, 0.3));
+}
+
+.vis-legend-label {
+  font-size: 11px;
+  font-family: var(--code-font, monospace);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}

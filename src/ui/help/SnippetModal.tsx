@@ -1,4 +1,4 @@
-import { Component, createSignal, onCleanup, onMount } from "solid-js";
+import { Component, createSignal, onCleanup, onMount, Show } from "solid-js";
 import {
   addSnippet as globalAddSnippet,
   updateSnippet as globalUpdateSnippet,
@@ -28,6 +28,8 @@ export const SnippetModal: Component<SnippetModalProps> = (props) => {
   const [title, setTitle] = createSignal("");
   const [tags, setTags] = createSignal("");
   const [code, setCode] = createSignal("");
+  const [titleError, setTitleError] = createSignal<string | null>(null);
+  let titleInput: HTMLInputElement | undefined;
 
   onMount(() => {
     const s = snippet();
@@ -55,7 +57,8 @@ export const SnippetModal: Component<SnippetModalProps> = (props) => {
 
   const handleSave = () => {
     if (!title().trim()) {
-      alert("Please enter a title");
+      setTitleError("Please enter a title");
+      titleInput?.focus();
       return;
     }
     const tagList = tags().split(",").map(t => t.trim()).filter(t => t);
@@ -84,14 +87,33 @@ export const SnippetModal: Component<SnippetModalProps> = (props) => {
         </div>
         <div class="code-snippet-modal-body">
           <div class="code-snippet-form-group">
-            <label>Title:</label>
-            <input 
-              type="text" 
-              class="code-snippet-input" 
-              value={title()} 
-              onInput={(e) => setTitle(e.currentTarget.value)}
+            <label for="snippet-title-input">Title:</label>
+            <input
+              ref={titleInput}
+              id="snippet-title-input"
+              type="text"
+              class="code-snippet-input"
+              value={title()}
+              onInput={(e) => {
+                setTitle(e.currentTarget.value);
+                if (titleError()) setTitleError(null);
+              }}
               placeholder="Enter snippet title"
+              aria-invalid={titleError() ? "true" : undefined}
+              aria-describedby={titleError() ? "snippet-title-error" : undefined}
             />
+            <Show when={titleError()}>
+              {(message) => (
+                <p
+                  id="snippet-title-error"
+                  class="code-snippet-field-error"
+                  role="alert"
+                  style={{ color: "var(--status-error, #f85149)", margin: "4px 0 0", "font-size": "12px" }}
+                >
+                  {message()}
+                </p>
+              )}
+            </Show>
           </div>
           <div class="code-snippet-form-group">
             <label>Tags (comma-separated):</label>

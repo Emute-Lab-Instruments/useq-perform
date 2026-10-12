@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { EditorState } from "@codemirror/state";
-// @ts-expect-error — clojure-mode has no type declarations
+
 import { default_extensions } from "@nextjournal/clojure-mode";
 
 import {
@@ -27,6 +27,27 @@ function rangeOf(source: string, snippet: string): ProbeRange {
 }
 
 describe("probeHelpers", () => {
+  it("ignores comments in wrapper arguments and indexed collections", () => {
+    const source = "(slow ; duration\n 2 (seq [10 ; middle\n 20 30] bar))";
+    const state = createStructuralEditor(source);
+    const [form] = collectVisibleIndexedForms(state, [{ from: 0, to: source.length }]);
+    expect(form.elementRanges.map((range) => state.sliceDoc(range.from, range.to))).toEqual(["10", "20", "30"]);
+    expect(buildProbeExpression(state, rangeOf(source, "bar"), "contextual")?.code).toBe("(slow 2 bar)");
+  });
+
+  it("maps literal list elements without counting the list constructor", () => {
+    const source = "(seq (list 10 20 30) bar)";
+    const state = createStructuralEditor(source);
+    const [form] = collectVisibleIndexedForms(state, [{ from: 0, to: source.length }]);
+    expect(form.elementRanges.map((range) => state.sliceDoc(range.from, range.to))).toEqual(["10", "20", "30"]);
+  });
+
+  it("does not invent element positions for a computed collection", () => {
+    const source = "(seq (reverse [10 20 30]) bar)";
+    const state = createStructuralEditor(source);
+    expect(collectVisibleIndexedForms(state, [{ from: 0, to: source.length }])).toEqual([]);
+  });
+
   it("builds a raw probe expression from the selected node text", () => {
     const source = "(slow 2 (from-list [1 2 3 4] (slow 2 bar)))";
     const state = createStructuralEditor(source);

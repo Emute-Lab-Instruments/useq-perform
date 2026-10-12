@@ -4,7 +4,6 @@
  * These are shared across the connector, protocol drivers, and stream parser.
  */
 
-import type { CircularBuffer } from "../lib/CircularBuffer.ts";
 import type { IoConfig } from "../runtime/jsonProtocol.ts";
 import type { UseqDiagnostic } from "../contracts/runtimeTypes.ts";
 
@@ -18,8 +17,6 @@ export const MESSAGE_TYPES = {
   LEGACY_TEXT: 32,
   /** Pre-1.2 framed message-editor output. */
   LEGACY_MESSAGE_TO_EDITOR: 100,
-  /** Transitional framed JSON accepted on input only. */
-  FRAMED_JSON: 101,
 } as const;
 
 // ── Serial read mode constants ───────────────────────────────────────
@@ -28,7 +25,6 @@ export const SERIAL_READ_MODES = {
   ANY: 0,
   LEGACY_TEXT: 1,
   SERIALSTREAM: 2,
-  FRAMED_JSON: 3,
   /** Bare JSON mode: `{...}\n` with no 0x1F prefix (spec §3.3). */
   BARE_JSON: 4,
 } as const;
@@ -41,6 +37,28 @@ export type SerialReadMode =
 export const EDITOR_VERSION = "1.2.0";
 export const HEARTBEAT_INTERVAL_MS = 60_000;
 export const HEARTBEAT_TIMEOUT_MS = 10_000;
+
+/**
+ * Default timeout for JSON `eval` requests (wire-protocol.md §5.7).
+ *
+ * Eval responses are must-deliver, so a healthy device answers quickly; a
+ * reply that is still missing after 10 s means the device is silent, the
+ * line was dropped (e.g. it exceeded the receive buffer), or the cable was
+ * pulled without a disconnect event. Without this bound a pending eval
+ * would never settle (blocking the Promise.all fan-out in
+ * runtimeCodeEvaluation) and its entry in `pendingRequests` would suppress
+ * every heartbeat tick until disconnect.
+ */
+export const EVAL_TIMEOUT_MS = 10_000;
+
+/**
+ * Maximum serialised request line length in bytes, terminator included in
+ * the device budget: the firmware RX ring is 2048 bytes and a line without
+ * a newline is dropped with an unsolicited "Message too long" log that
+ * carries no requestId (serial_protocol.cpp). 2047 payload bytes + "\n"
+ * exactly fill one buffer.
+ */
+export const MAX_REQUEST_LINE_BYTES = 2047;
 
 // ── Transport context ────────────────────────────────────────────────
 
@@ -111,7 +129,7 @@ export interface JsonResponse {
   /** Firmware's authoritative cumulative offset in cents (spec §5.13 `calibrate-adjust`). */
   clampedOffset?: number;
   /** Per-output calibration status (spec §5.11 `calibrate-begin` response). */
-  status?: { kind: string; date?: string; savedOctaves?: number[] };
+  status?: string | { kind: string; date?: string; savedOctaves?: number[] };
   /** Human-readable error reason (calibrate-* rejections, spec §5.16). */
   error?: string;
 }
@@ -128,6 +146,8 @@ export interface SendJsonEvalOptions {
   capture?: CaptureCallback | null;
   force?: boolean;
   skipConsole?: boolean;
+  /** Override the default eval response timeout (EVAL_TIMEOUT_MS). */
+  timeout?: number;
 }
 
 // ── Protocol state bag ───────────────────────────────────────────────
@@ -173,7 +193,3 @@ export interface ConnectedFirmwareIdentity {
   capabilities: readonly string[];
   modules: readonly ConnectedModuleIdentity[];
 }
-
-// ── Buffer map function type ─────────────────────────────────────────
-
-export type BufferMapFunction = (buffer: CircularBuffer) => void;

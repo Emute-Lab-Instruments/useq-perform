@@ -1,7 +1,6 @@
 import { Component, For, createSignal, createMemo, Show, onMount, onCleanup } from "solid-js";
 import {
   referenceStore,
-  setReferenceStore,
   setTargetVersion,
   toggleExpanded,
   ensureReferenceDataLoaded,
@@ -12,37 +11,15 @@ import {
 } from "../../utils/referenceStore";
 import { ReferenceItem } from "./ReferenceItem";
 import { ReferenceFilters } from "./ReferenceFilters";
+import { LoadingState } from "../LoadingState";
 import { currentVersion as connectedFirmwareVersion } from "../../transport/upgradeCheck.ts";
 import { showChromePanel } from "../adapters/panels";
 import { referenceSearchChannel, helpTabSwitchChannel } from "./helpChannels";
+import { notify } from "../../contracts/toastChannels";
 
-/**
- * Show a transient notification toast that auto-dismisses after a delay.
- */
-let _toastTimer: ReturnType<typeof setTimeout> | undefined;
-
+/** Show a transient notification through the shared toast surface. */
 function showNotification(message: string, durationMs = 2500): void {
-  const existing = document.querySelector(".useq-reference-toast");
-  if (existing) {
-    existing.remove();
-    clearTimeout(_toastTimer);
-  }
-
-  const toast = document.createElement("div");
-  toast.className = "useq-reference-toast";
-  toast.textContent = message;
-  document.body.appendChild(toast);
-
-  // Trigger reflow so the enter animation plays
-  void toast.offsetWidth;
-  toast.classList.add("useq-reference-toast--visible");
-
-  _toastTimer = setTimeout(() => {
-    toast.classList.remove("useq-reference-toast--visible");
-    toast.addEventListener("transitionend", () => toast.remove(), { once: true });
-    // Fallback removal in case transitionend doesn't fire
-    setTimeout(() => toast.remove(), 400);
-  }, durationMs);
+  notify({ message, kind: "info", durationMs });
 }
 
 /**
@@ -195,7 +172,7 @@ export const ModuLispReferenceTab: Component = () => {
       />
 
       <div class="doc-function-list">
-        <Show when={!referenceStore.isLoading} fallback={<div>Loading reference...</div>}>
+        <Show when={!referenceStore.isLoading} fallback={<LoadingState label="Loading reference…" />}>
           <For each={filteredEntries()}>
             {(entry) => <ReferenceItem entry={entry} targetVersion={parsedTargetVersion()} />}
           </For>

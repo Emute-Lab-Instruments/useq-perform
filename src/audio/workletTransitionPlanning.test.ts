@@ -6,38 +6,8 @@ import {
   PRODUCER_LIVENESS_HOLD,
   PRODUCER_LIVENESS_RESET,
   planProducerLiveness,
-  planWorkletGraph,
   shouldEnterProducerTimeout,
 } from "./workletTransitionPlanning";
-
-describe("worklet graph transition planning", () => {
-  it("orders dependencies stably and marks only consumed sources non-terminal", () => {
-    const plan = planWorkletGraph(4, [
-      { source: 0, target: 2 },
-      { source: 1, target: 2 },
-      { source: 2, target: 3 },
-    ]);
-    expect(plan.order).toEqual([0, 1, 2, 3]);
-    expect(plan.consumed).toEqual([true, true, true, false]);
-  });
-
-  it("keeps cyclic remainder in insertion order", () => {
-    const plan = planWorkletGraph(3, [
-      { source: 1, target: 2 },
-      { source: 2, target: 1 },
-    ]);
-    expect(plan.order).toEqual([0, 1, 2]);
-    expect(plan.consumed).toEqual([false, true, true]);
-  });
-
-  it("ignores invalid and self edges", () => {
-    expect(planWorkletGraph(2, [
-      { source: 0, target: 0 },
-      { source: -1, target: 1 },
-      { source: 0, target: 4 },
-    ])).toEqual({ order: [0, 1], consumed: [false, false] });
-  });
-});
 
 describe("producer liveness transition planning", () => {
   it("distinguishes fresh, underrun, detached, and bring-up observations", () => {

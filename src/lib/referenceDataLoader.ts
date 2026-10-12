@@ -1,4 +1,8 @@
-import type { ReferenceEntry } from "../utils/referenceStore.ts";
+import type {
+  NamespaceApplicability,
+  NamespaceDefinition,
+  ReferenceEntry,
+} from "../utils/referenceStore.ts";
 import { parseVersionString } from "./versionUtils.ts";
 
 /** Raw shape of a reference entry as loaded from JSON (before normalization). */
@@ -10,6 +14,8 @@ interface RawReferenceEntry {
   examples?: unknown;
   introduced_in_version?: unknown;
   changed_in_version?: unknown;
+  bare_identity?: unknown;
+  namespace_applicability?: unknown;
   [key: string]: unknown;
 }
 
@@ -26,12 +32,51 @@ export const normalizeEntry = (raw: unknown): ReferenceEntry | null => {
       typeof p === "string" ? { name: p, description: "" } : (p as { name: string; description: string })
     ) : [],
     examples: Array.isArray(r.examples) ? (r.examples as string[]) : [],
+    bareIdentity: typeof r.bare_identity === "string" ? r.bare_identity : null,
+    namespaceApplicability: normalizeApplicability(r.namespace_applicability),
     meta: {
       introduced: parseVersionString(r.introduced_in_version),
       changed: parseVersionString(r.changed_in_version),
     },
   };
 };
+
+function normalizeApplicability(raw: unknown): NamespaceApplicability[] {
+  if (!Array.isArray(raw)) return [];
+  return raw.flatMap((item) => {
+    if (!item || typeof item !== "object") return [];
+    const value = item as Record<string, unknown>;
+    if (
+      typeof value.namespace !== "string" ||
+      typeof value.spelling !== "string" ||
+      typeof value.identity !== "string"
+    ) return [];
+    return [{
+      namespace: value.namespace,
+      spelling: value.spelling,
+      identity: value.identity,
+    }];
+  });
+}
+
+function normalizeNamespaces(raw: unknown): NamespaceDefinition[] {
+  if (!Array.isArray(raw)) return [];
+  return raw.flatMap((item) => {
+    if (!item || typeof item !== "object") return [];
+    const value = item as Record<string, unknown>;
+    if (typeof value.name !== "string" || typeof value.semantics !== "string") return [];
+    return [{
+      name: value.name,
+      longName: typeof value.long_name === "string" ? value.long_name : undefined,
+      semantics: value.semantics,
+    }];
+  });
+}
+
+export interface ReferenceDataDocument {
+  operators: unknown[];
+  namespaces: NamespaceDefinition[];
+}
 
 const REFERENCE_DATA_IMPORT_META_PATHS = [
   "../../assets/modulisp_reference_data.json",
@@ -75,7 +120,7 @@ export const getReferenceDataCandidateUrls = (): string[] => {
   return Array.from(candidates);
 };
 
-export const loadReferenceDataFromCandidates = async (): Promise<unknown[]> => {
+export const loadReferenceDocumentFromCandidates = async (): Promise<ReferenceDataDocument> => {
   const errors: string[] = [];
 
   for (const candidate of getReferenceDataCandidateUrls()) {
@@ -86,13 +131,23 @@ export const loadReferenceDataFromCandidates = async (): Promise<unknown[]> => {
         continue;
       }
 
-      const data = await response.json();
-      if (!Array.isArray(data)) {
+      const data: unknown = await response.json();
+      if (Array.isArray(data)) {
+        return { operators: data, namespaces: [] };
+      }
+      if (!data || typeof data !== "object") {
         errors.push(`${candidate} -> invalid payload`);
         continue;
       }
-
-      return data;
+      const document = data as Record<string, unknown>;
+      if (!Array.isArray(document.operators)) {
+        errors.push(`${candidate} -> invalid operator payload`);
+        continue;
+      }
+      return {
+        operators: document.operators,
+        namespaces: normalizeNamespaces(document.namespaces),
+      };
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       errors.push(`${candidate} -> ${message}`);
@@ -101,3 +156,6 @@ export const loadReferenceDataFromCandidates = async (): Promise<unknown[]> => {
 
   throw new Error(`Unable to load documentation data (${errors.join("; ")})`);
 };
+
+export const loadReferenceDataFromCandidates = async (): Promise<unknown[]> =>
+  (await loadReferenceDocumentFromCandidates()).operators;

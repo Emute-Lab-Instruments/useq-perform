@@ -23,7 +23,7 @@ export interface LiveEditWidgetConfig {
  * Facet that carries the widget configuration for a specific editor instance.
  * Using a facet instead of a module-level variable ensures each editor view
  * holds its own config, fixing the silent-overwrite bug when multiple editors
- * coexist (Inspector, Storybook, etc.).
+ * coexist (Storybook, tests, etc.).
  *
  * The combiner keeps only the last provided value so a single
  * `liveEditWidgetConfigFacet.of(config)` in the extensions array wins cleanly.

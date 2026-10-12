@@ -1,9 +1,6 @@
 import { describe, it, expect, vi } from "vitest";
 import { actions, type ActionId, type ActionCategory } from "./actions.ts";
-import {
-  defaultKeyBindings,
-  defaultGamepadBindings,
-} from "./defaults.ts";
+import { defaultKeyBindings } from "./defaults.ts";
 import {
   detectOs,
   isBrowserReserved,
@@ -28,6 +25,13 @@ vi.mock("../../editors/extensions/probes.ts", () => ({
 }));
 vi.mock("../../editors/extensions/structure/adapter/dispatcher.ts", () => ({
   dispatchAction: vi.fn(() => true),
+}));
+vi.mock("../../ui/adapters/calibrationRuntime.ts", () => ({
+  beginCalibration: vi.fn(() => true),
+}));
+vi.mock("../../ui/adapters/liveEditPanel.tsx", () => ({
+  toggleLiveEditPanel: vi.fn(),
+  startLiveEditLearnAll: vi.fn(),
 }));
 
 // Import handlers after mocks are registered
@@ -54,15 +58,11 @@ const validCategories: ActionCategory[] = [
 ];
 
 // Actions not expected to have a handler in the handler registry.
-// Picker/menu scoped actions are dispatched via their own channel subscribers.
+// menu.openBefore / menu.openAfter / menu.radial are dispatched to the menu
+// dispatcher's own channel subscriber (gamepad.md §6.5/§6.1).
 // nav.home / nav.end are handled by CodeMirror's built-in defaultKeymap.
+// (picker.* bindings were removed with the picker layer — radial-menu.md §11.3.)
 const handlerExemptActions = new Set<string>([
-  "picker.up",
-  "picker.down",
-  "picker.left",
-  "picker.right",
-  "picker.select",
-  "picker.cancel",
   "menu.openBefore",
   "menu.openAfter",
   "menu.radial",
@@ -104,11 +104,40 @@ describe("Default bindings reference valid actions", () => {
     });
   }
 
-  for (const binding of defaultGamepadBindings) {
-    it(`gamepad binding [${binding.combo.join("+")}] → "${binding.action}" is a valid ActionId`, () => {
-      expect(allActionIds).toContain(binding.action);
-    });
-  }
+  // calibration.md §2.1 / live-edit.md §5.1.5 — round-3 errata wiring:
+  // both actions are registered and routed, and the panel toggle ships a
+  // default keybinding.
+  it("calibration.begin is registered and routed", () => {
+    expect(actions["calibration.begin"]).toBeDefined();
+    expect(handlers["calibration.begin"]).toBeDefined();
+  });
+
+  it("liveEdit.panel.toggle is registered, routed, and bound by default", () => {
+    expect(actions["liveEdit.panel.toggle"]).toBeDefined();
+    expect(handlers["liveEdit.panel.toggle"]).toBeDefined();
+    expect(
+      defaultKeyBindings.some(
+        (b) => b.action === "liveEdit.panel.toggle" && b.key === "Alt-l",
+      ),
+    ).toBe(true);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// 2b. When-clauses only reference contexts that are actually registered
+// ---------------------------------------------------------------------------
+
+describe("When-clauses reference registered contexts", () => {
+  it("no default binding gates on the removed picker layer", () => {
+    // radial-menu.md §11.3: the radial layer replaces the removed picker
+    // layer. No predicate named "picker.open" is ever registered, so a
+    // when-clause referencing it logged "Unknown context predicate" on every
+    // qualifying keypress.
+    const stale = defaultKeyBindings.filter((b) =>
+      b.when?.includes("picker."),
+    );
+    expect(stale.map((b) => b.action)).toEqual([]);
+  });
 });
 
 // ---------------------------------------------------------------------------
@@ -229,6 +258,7 @@ describe("Default keyboard binding key snapshot", () => {
         "Alt-e ]",
         "Alt-e j",
         "Alt-e k",
+        "Alt-e n",
         "Alt-e p",
         "Alt-e r",
         "Alt-e s",
@@ -237,6 +267,7 @@ describe("Default keyboard binding key snapshot", () => {
         "Alt-f",
         "Alt-g",
         "Alt-h",
+        "Alt-l",
         "Alt-o g",
         "Alt-o h",
         "Alt-o p",
@@ -245,10 +276,6 @@ describe("Default keyboard binding key snapshot", () => {
         "Alt-p",
         "Alt-r",
         "Alt-s",
-        "ArrowDown",
-        "ArrowLeft",
-        "ArrowRight",
-        "ArrowUp",
         "Ctrl-Shift-[",
         "Ctrl-Shift-]",
         "Ctrl-[",
@@ -256,8 +283,6 @@ describe("Default keyboard binding key snapshot", () => {
         "Ctrl-k",
         "End",
         "Enter",
-        "Enter",
-        "Escape",
         "Escape",
         "Escape",
         "Home",

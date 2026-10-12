@@ -14,6 +14,7 @@ import {
   buildDefaultStreamConfig,
   buildHeartbeatRequest,
   buildHelloRequest,
+  buildInputChannelRouting,
   buildSerialOutputRouting,
   buildSetLiveInputsRequest,
   buildCalibrateBeginRequest,
@@ -36,6 +37,7 @@ import {
 } from "../runtime/runtimeSessionService.ts";
 import {
   protocolReady as protocolReadyChannel,
+  firmwareStatus as firmwareStatusChannel,
   jsonMeta as jsonMetaChannel,
   animateConnect as animateConnectChannel,
   standaloneDiagnostics as standaloneDiagnosticsChannel,
@@ -48,8 +50,10 @@ import { cleanCode, isPortWritable } from "./serial-utils.ts";
 
 import {
   EDITOR_VERSION,
+  EVAL_TIMEOUT_MS,
   HEARTBEAT_INTERVAL_MS,
   HEARTBEAT_TIMEOUT_MS,
+  MAX_REQUEST_LINE_BYTES,
   type TransportContext,
   type ProtocolState,
   type JsonResponse,
@@ -58,7 +62,11 @@ import {
   type CaptureCallback,
   type ConnectedFirmwareIdentity,
 } from "./types.ts";
-import { serialBuffers, setSerialOutputBufferRouting } from "./stream-parser.ts";
+import {
+  serialBuffers,
+  setSerialInputHwRouting,
+  setSerialOutputBufferRouting,
+} from "./stream-parser.ts";
 import { clearLiveSlotIndex } from "../lib/liveSlotIndex.ts";
 import {
   handleLegacyText,
@@ -125,8 +133,11 @@ function serialport(): SerialPort | null {
 
 // ── Protocol accessors ──────────────────────────────────────────────
 
-export function getProtocolMode(): "legacy" | "json" {
-  return protocolState.mode === "json" ? "json" : "legacy";
+export function getProtocolMode(): "negotiating" | "legacy" | "json" {
+  if (protocolState.mode === "negotiating") {
+    return protocolState.negotiationAttempted ? "negotiating" : "legacy";
+  }
+  return protocolState.mode;
 }
 
 export function isJsonProtocolActive(): boolean {
@@ -139,7 +150,9 @@ export function getIoConfig(): IoConfig | null {
 
 export function getConnectedFirmwareIdentity(): ConnectedFirmwareIdentity {
   return {
-    protocolMode: getProtocolMode(),
+    // This identity is consumed only after protocolReady; keep its narrower
+    // contract explicit while the public protocol accessor reports negotiation.
+    protocolMode: protocolState.mode === "json" ? "json" : "legacy",
     firmwareVersion: protocolState.firmwareVersion,
     protocolVersion: protocolState.protocolVersion,
     hardwareTarget: protocolState.hardwareTarget,
@@ -186,11 +199,12 @@ export function resetProtocolState(): void {
   _handshakeResolve = null;
   _handshakePromise = null;
   setSerialOutputBufferRouting({});
+  setSerialInputHwRouting({});
   for (const buf of serialBuffers) buf.clear();
   clearLiveSlotIndex();
   resetLegacyProtocol();
   stopHeartbeat();
-  reportProtocolModeChanged(getProtocolMode());
+  reportProtocolModeChanged();
 }
 
 // ── Heartbeat ────────────────────────────────────────────────────────
@@ -283,9 +297,7 @@ function dispatchProtocolReady(): void {
  * Resolves the shared signal so `sendHelloWithRetry` can exit cleanly.
  */
 function completeHandshake(response: JsonResponse): void {
-  if (import.meta.env.DEV) {
-    console.log("[json-protocol] completeHandshake called with:", JSON.stringify(response).slice(0, 300));
-  }
+  dbg("json-protocol: completeHandshake", JSON.stringify(response).slice(0, 300));
   if (response.success && response.mode === "json") {
     protocolState.mode = "json";
     protocolState.firmwareVersion = response.fw ?? null;
@@ -297,15 +309,16 @@ function completeHandshake(response: JsonResponse): void {
     protocolState.modules = Array.isArray(response.modules)
       ? response.modules.map((module) => ({ ...module }))
       : [];
-    if (import.meta.env.DEV) {
-      console.log("[json-protocol] Handshake SUCCESS — mode=json, fw=", response.fw);
-    }
+    dbg("json-protocol: handshake success", response.fw);
     if (response.fw) {
       upgradeCheck(response.fw);
     }
     if (response.config) {
       protocolState.ioConfig = response.config;
       setSerialOutputBufferRouting(buildSerialOutputRouting(response.config));
+      // state-sync.md §1.2: route input stream frames (ain1/ain2) to the WASM
+      // hardware-input indices so the sampler subscriber receives them.
+      setSerialInputHwRouting(buildInputChannelRouting(response.config));
       sendDefaultStreamConfig(response.config);
     }
     startHeartbeat();
@@ -366,15 +379,16 @@ async function sendHelloOnce(): Promise<JsonResponse> {
  * for the current attempt's timeout.
  */
 export async function sendHelloWithRetry(): Promise<void> {
-  protocolState.negotiationAttempted = true;
-  const handshakeDone = createHandshakeSignal();
-  console.log("[json-protocol] sendHelloWithRetry: starting protocol detection");
-
   const initialPort = serialport();
   if (!initialPort?.writable) {
-    console.log("[json-protocol] sendHelloWithRetry: port not writable, aborting");
+    dbg("json-protocol: port not writable; protocol detection aborted");
     return;
   }
+
+  protocolState.negotiationAttempted = true;
+  const handshakeDone = createHandshakeSignal();
+  dbg("json-protocol: starting protocol detection");
+  _ctx?.emitConnectionChanged();
 
   const legacyIdentity = await Promise.race([
     probeLegacyFirmware(
@@ -395,15 +409,15 @@ export async function sendHelloWithRetry(): Promise<void> {
 
     const port = serialport();
     if (!port?.writable) {
-      console.log("[json-protocol] sendHelloWithRetry: port not writable, aborting");
+      dbg("json-protocol: port not writable; hello retry aborted");
       return;
     }
 
-    console.log(`[json-protocol] hello attempt ${attempt}/${HELLO_MAX_ATTEMPTS}`);
+    dbg(`json-protocol: hello attempt ${attempt}/${HELLO_MAX_ATTEMPTS}`);
 
     const attemptRace = Promise.race([
       sendHelloOnce().then((response) => {
-        console.log("[json-protocol] hello response received:", JSON.stringify(response).slice(0, 200));
+        dbg("json-protocol: hello response", JSON.stringify(response).slice(0, 200));
         if (mode() === "negotiating") completeHandshake(response);
       }),
       handshakeDone,
@@ -413,13 +427,13 @@ export async function sendHelloWithRetry(): Promise<void> {
       await attemptRace;
       if (mode() !== "negotiating") return;
     } catch (err) {
-      console.log(`[json-protocol] hello attempt ${attempt} failed: ${String(err)}`);
+      dbg(`json-protocol: hello attempt ${attempt} failed: ${String(err)}`);
       if (mode() !== "negotiating") return;
     }
   }
 
   if (protocolState.mode === "negotiating") {
-    console.log("[json-protocol] All hello attempts exhausted — giving up");
+    dbg("json-protocol: all hello attempts exhausted");
     post(
       "uSEQ did not respond to hello. Try unplugging and reconnecting.",
       "error"
@@ -493,9 +507,17 @@ export function writeJsonRequest(
   };
 
   const message = `${JSON.stringify(payload)}\n`;
-  if (import.meta.env.DEV && !options.skipConsole) {
-    console.log(`[json-protocol] TX → ${message.trim().slice(0, 200)}`);
+  // The device drops any line that fills its 2048-byte RX ring without a
+  // newline, replying only with an unsolicited log that carries no requestId —
+  // so an oversized request could otherwise pend until disconnect.
+  if (encoder.encode(message).byteLength > MAX_REQUEST_LINE_BYTES) {
+    return Promise.reject(
+      new Error(
+        `Request exceeds the device receive buffer (${MAX_REQUEST_LINE_BYTES} bytes max) — not sent`,
+      ),
+    );
   }
+  if (!options.skipConsole) dbg(`json-protocol: TX ${message.trim().slice(0, 200)}`);
 
   return new Promise<JsonResponse>((resolve, reject) => {
     pending.resolve = resolve;
@@ -503,7 +525,7 @@ export function writeJsonRequest(
 
     if (options.timeout && options.timeout > 0) {
       pending.timeoutId = setTimeout(() => {
-        console.log(`[json-protocol] TIMEOUT: ${requestId} (${options.timeout}ms) — pending: [${Array.from(protocolState.pendingRequests.keys()).join(', ')}]`);
+        dbg(`json-protocol: timeout ${requestId} (${options.timeout}ms)`);
         protocolState.pendingRequests.delete(requestId);
         reject(new Error(`Request ${requestId} timed out`));
       }, options.timeout);
@@ -513,7 +535,7 @@ export function writeJsonRequest(
 
     serialWrite(port, encoder.encode(message))
       .catch((error: Error) => {
-        console.log(`[json-protocol] serialWrite error for ${requestId}:`, error);
+        dbg(`json-protocol: serial write failed for ${requestId}`, error);
         if (pending.timeoutId) {
           clearTimeout(pending.timeoutId);
         }
@@ -565,7 +587,12 @@ export function sendJsonEval(
   code: string,
   options: SendJsonEvalOptions = {}
 ): Promise<JsonResponse> {
-  const { capture = null, force = false, skipConsole = false } = options;
+  const {
+    capture = null,
+    force = false,
+    skipConsole = false,
+    timeout = EVAL_TIMEOUT_MS,
+  } = options;
 
   const port = serialport();
   if (!port || !port.writable) {
@@ -576,7 +603,10 @@ export function sendJsonEval(
     return Promise.reject(new Error("JSON protocol not active"));
   }
 
-  return writeJsonRequest({ type: "eval", code }, { capture, skipConsole });
+  return writeJsonRequest(
+    { type: "eval", code },
+    { capture, skipConsole, timeout }
+  );
 }
 
 // ── Send live-input slot values ──────────────────────────────────────
@@ -589,6 +619,10 @@ export function sendJsonEval(
 export function sendSetLiveInputs(
   slots: Record<string, number | boolean | string>
 ): Promise<void> {
+  if (protocolState.mode !== "json") {
+    return Promise.reject(new Error("JSON protocol not active"));
+  }
+
   const port = serialport();
   if (!port || !port.writable) {
     return Promise.reject(new Error("Serial port is not writable"));
@@ -659,6 +693,10 @@ export function buildBinaryInputSetFrame(
 export function sendBinaryInputSet(
   entries: ReadonlyArray<BinaryInputSetEntry>,
 ): Promise<void> {
+  if (protocolState.mode !== "json") {
+    return Promise.reject(new Error("JSON protocol not active"));
+  }
+
   const port = serialport();
   if (!port || !port.writable) {
     return Promise.reject(new Error("Serial port is not writable"));
@@ -812,7 +850,10 @@ export function sendTouSEQ(
 
   if (!isPortWritable(port)) {
     handleNotConnected();
-    return Promise.resolve();
+    // Resolve with an explicit failure envelope (never `undefined`) so
+    // callers mapping the response — e.g. evalCodeWithDiagnostics — do not
+    // mistake "could not send" for a delivered eval.
+    return Promise.resolve({ success: false, error: "uSEQ not connected" });
   }
 
   if (protocolState.mode === "legacy") {
@@ -824,6 +865,13 @@ export function sendTouSEQ(
   }
 
   if (protocolState.mode === "negotiating") {
+    // Surface the drop: without this the eval silently vanishes for the
+    // user during the handshake window (the rejection only reaches the
+    // runtime fan-out's settled promise, which shows nothing).
+    post(
+      "uSEQ is still connecting (protocol handshake in progress) — eval not sent. Try again shortly.",
+      "warn",
+    );
     return Promise.reject(
       new Error("Firmware protocol negotiation is still in progress"),
     );
@@ -869,7 +917,7 @@ export function handleJsonMessage(rawMessage: string): void {
   const trimmedMessage = rawMessage.trim();
   if (trimmedMessage.length === 0) return;
 
-  console.log(`[json-protocol] handleJsonMessage: ${trimmedMessage.slice(0, 200)}`);
+  dbg(`json-protocol: RX ${trimmedMessage.slice(0, 200)}`);
 
   let parsed: JsonResponse;
   try {
@@ -890,7 +938,7 @@ export function handleJsonMessage(rawMessage: string): void {
       console.error(`[json-protocol] Invalid ready frame: ${validation.error}`);
       return;
     }
-    console.log("[json-protocol] Received 'ready' frame from device");
+    dbg("json-protocol: received ready frame");
     retryHelloOnReady();
     return;
   }
@@ -917,6 +965,17 @@ export function handleJsonMessage(rawMessage: string): void {
         post(`uSEQ: ${text}`);
       }
     }
+    return;
+  }
+
+  if (parsed.type === "status") {
+    const validation = validateProtocolUnsolicitedMessage(parsed);
+    if (!validation.ok) {
+      console.error(`[json-protocol] Invalid status frame: ${validation.error}`);
+      return;
+    }
+    const status = parsed.status as string | undefined;
+    if (status) firmwareStatusChannel.publish({ status });
     return;
   }
 
@@ -986,7 +1045,7 @@ export function handleJsonMessage(rawMessage: string): void {
     : never) | null = null;
 
   if (requestId && protocolState.pendingRequests.has(requestId)) {
-    console.log(`[json-protocol] Matched response for ${requestId}, success=${success}`);
+    dbg(`json-protocol: matched response ${requestId}, success=${success}`);
     pending = protocolState.pendingRequests.get(requestId)!;
     protocolState.pendingRequests.delete(requestId);
 
@@ -994,7 +1053,7 @@ export function handleJsonMessage(rawMessage: string): void {
       clearTimeout(pending.timeoutId);
     }
   } else if (requestId) {
-    console.log(`[json-protocol] Response for ${requestId} has NO pending request (already timed out?)`);
+    dbg(`json-protocol: late/unmatched response ${requestId}`);
   }
 
   if (pending) {

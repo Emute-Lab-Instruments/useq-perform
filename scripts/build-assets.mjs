@@ -23,6 +23,7 @@ import {
   verifyServedBundleManifest,
   writeServedBundleManifest,
 } from './served-bundle-manifest.mjs';
+import { generateReferenceData } from './generate-reference-data.mjs';
 
 // --- Configuration ---
 
@@ -125,6 +126,13 @@ function assertCompilerCheckoutClean() {
     },
   ).trim();
   if (status !== '') {
+    if (process.env.USEQ_ALLOW_DIRTY_COMPILER === '1') {
+      console.warn(
+        'WARNING: publishing compiler artifacts from a dirty src-useq checkout ' +
+          'because USEQ_ALLOW_DIRTY_COMPILER=1.',
+      );
+      return;
+    }
     throw new Error(
       'Refusing to publish compiler artifacts from a dirty src-useq checkout:\n' +
         status,
@@ -138,6 +146,7 @@ function verifyCompilerBundle({ manifest, js, wasm, expectedGitCommit }) {
     jsPath: js,
     wasmPath: wasm,
     expectedGitCommit,
+    allowDirtySource: process.env.USEQ_ALLOW_DIRTY_COMPILER === '1',
   });
 }
 
@@ -188,9 +197,8 @@ function buildMarkdown() {
 
 function copyReferenceData() {
   try {
-    ensureDirectoryExists(path.dirname(referenceDataFile.dest));
-    fs.copyFileSync(referenceDataFile.src, referenceDataFile.dest);
-    console.log(`Copied ${referenceDataFile.src} -> ${referenceDataFile.dest}`);
+    generateReferenceData();
+    console.log(`Generated ${referenceDataFile.src} -> ${referenceDataFile.dest}`);
   } catch (error) {
     console.error(`Failed to copy ${referenceDataFile.src}:`, error.message);
   }
@@ -342,7 +350,9 @@ function buildAll() {
 }
 
 function watchMode() {
-  void buildAll().catch((error) => console.error(error.message));
+  // Defer the call itself so synchronous validation failures are handled just
+  // like failures from the asynchronous worklet bundle.
+  void Promise.resolve().then(buildAll).catch((error) => console.error(error.message));
 
   let synthesisWorkletBuildTimer = null;
   const scheduleSynthesisWorkletBundle = () => {
@@ -388,8 +398,12 @@ function watchMode() {
         path.basename(compilerCapabilityManifestFile.src),
         path.basename(oscSineNodedefFile.src),
       ]).has(filename)) {
-        copyUseqWasmBundle();
-        if (fs.existsSync(synthesisWorkletFile.dest)) buildServedBundleManifest();
+        try {
+          copyUseqWasmBundle();
+          if (fs.existsSync(synthesisWorkletFile.dest)) buildServedBundleManifest();
+        } catch (error) {
+          console.error(`Failed to refresh WASM bundle: ${error.message}`);
+        }
       }
     });
     console.log(`Watching ${wasmDir}/ for WASM bundle changes...`);

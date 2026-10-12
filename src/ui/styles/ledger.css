@@ -16,7 +16,7 @@
 }
 
 .ledger-error {
-  color: var(--error-color, #ff6b6b);
+  color: var(--status-error, #ff6b6b);
 }
 
 /* ---- Verdict colours (§3.1) ---- */
@@ -37,15 +37,15 @@
   white-space: nowrap;
 }
 
-.ledger-badge--pass { --ledger-verdict: #4ec9a0; }
-.ledger-badge--fail { --ledger-verdict: #ff6b6b; }
-.ledger-badge--error { --ledger-verdict: #ffb454; }
+.ledger-badge--pass { --ledger-verdict: var(--status-ok, #4ec9a0); }
+.ledger-badge--fail { --ledger-verdict: var(--status-error, #ff6b6b); }
+.ledger-badge--error { --ledger-verdict: var(--status-warn, #ffb454); }
 .ledger-badge--unsupported,
 .ledger-badge--unrun,
 .ledger-badge--none { --ledger-verdict: rgba(255, 255, 255, 0.3); }
 
-.ledger-badge--fail { background: rgba(255, 107, 107, 0.14); }
-.ledger-badge--error { background: rgba(255, 180, 84, 0.12); }
+.ledger-badge--fail { background: color-mix(in srgb, var(--status-error, #ff6b6b) 14%, transparent); }
+.ledger-badge--error { background: color-mix(in srgb, var(--status-warn, #ffb454) 12%, transparent); }
 .ledger-badge--none { opacity: 0.45; }
 
 .ledger-badge__label,
@@ -126,9 +126,9 @@
   border-radius: 999px;
 }
 
-.ledger-summary__item--pass { color: #4ec9a0; border-color: rgba(78, 201, 160, 0.5); }
-.ledger-summary__item--fail { color: #ff6b6b; border-color: rgba(255, 107, 107, 0.5); }
-.ledger-summary__item--error { color: #ffb454; border-color: rgba(255, 180, 84, 0.5); }
+.ledger-summary__item--pass { color: var(--status-ok, #4ec9a0); border-color: color-mix(in srgb, var(--status-ok, #4ec9a0) 50%, transparent); }
+.ledger-summary__item--fail { color: var(--status-error, #ff6b6b); border-color: color-mix(in srgb, var(--status-error, #ff6b6b) 50%, transparent); }
+.ledger-summary__item--error { color: var(--status-warn, #ffb454); border-color: color-mix(in srgb, var(--status-warn, #ffb454) 50%, transparent); }
 .ledger-summary__item--unsupported,
 .ledger-summary__item--unrun { opacity: 0.6; }
 
@@ -198,8 +198,8 @@
 
 .ledger-block--highlight,
 .ledger-heading--highlight {
-  background: rgba(78, 201, 160, 0.1);
-  outline: 1px solid rgba(78, 201, 160, 0.35);
+  background: color-mix(in srgb, var(--status-ok, #4ec9a0) 10%, transparent);
+  outline: 1px solid color-mix(in srgb, var(--status-ok, #4ec9a0) 35%, transparent);
   border-radius: 4px;
 }
 
@@ -267,8 +267,8 @@
 }
 
 .ledger-witness__detail { margin: 4px 0; font-size: 0.82em; opacity: 0.85; }
-.ledger-witness__detail--fail { color: #ff6b6b; opacity: 1; }
-.ledger-witness__detail--error { color: #ffb454; opacity: 1; }
+.ledger-witness__detail--fail { color: var(--status-error, #ff6b6b); opacity: 1; }
+.ledger-witness__detail--error { color: var(--status-warn, #ffb454); opacity: 1; }
 
 .ledger-witness__meta {
   display: grid;
@@ -288,9 +288,9 @@
   border-left: 2px solid rgba(255, 255, 255, 0.15);
 }
 
-.ledger-step--pass { border-left-color: #4ec9a0; }
-.ledger-step--fail { border-left-color: #ff6b6b; }
-.ledger-step--error { border-left-color: #ffb454; }
+.ledger-step--pass { border-left-color: var(--status-ok, #4ec9a0); }
+.ledger-step--fail { border-left-color: var(--status-error, #ff6b6b); }
+.ledger-step--error { border-left-color: var(--status-warn, #ffb454); }
 .ledger-step--unsupported { border-left-color: rgba(255, 255, 255, 0.2); opacity: 0.75; }
 
 .ledger-step__head {
@@ -304,8 +304,8 @@
 
 .ledger-step__index { opacity: 0.5; }
 .ledger-step__op { font-weight: 600; }
-.ledger-step__verdict--fail { color: #ff6b6b; opacity: 1; }
-.ledger-step__verdict--error { color: #ffb454; opacity: 1; }
+.ledger-step__verdict--fail { color: var(--status-error, #ff6b6b); opacity: 1; }
+.ledger-step__verdict--error { color: var(--status-warn, #ffb454); opacity: 1; }
 
 .ledger-step__sample,
 .ledger-step__raw {
@@ -327,7 +327,7 @@
 }
 .ledger-step__values dt { opacity: 0.5; }
 .ledger-step__values dd { margin: 0; }
-.ledger-step__actual--fail { color: #ff6b6b; }
+.ledger-step__actual--fail { color: var(--status-error, #ff6b6b); }
 
-.ledger-step__detail { margin: 4px 0 0; font-size: 0.78em; color: #ff6b6b; }
+.ledger-step__detail { margin: 4px 0 0; font-size: 0.78em; color: var(--status-error, #ff6b6b); }
 .ledger-step__detail--muted { color: inherit; opacity: 0.6; }

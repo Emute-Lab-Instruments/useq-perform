@@ -21,9 +21,13 @@ import {
 } from "./startupContext";
 
 import {
-  updateRuntimeSessionState,
+  transitionRuntimeCoordinator,
   teardownRuntimeSessionState,
 } from "./runtimeCoordinator";
+import type { RuntimeCoordinatorTransition } from "./runtimeCoordinator";
+
+const setSession = (updates: Extract<RuntimeCoordinatorTransition, { type: "session" }>['updates']) =>
+  transitionRuntimeCoordinator({ type: "session", updates });
 
 describe("runtimeDiagnostics (derived)", () => {
   beforeEach(() => {
@@ -66,7 +70,7 @@ describe("runtimeDiagnostics (derived)", () => {
   });
 
   it("derives runtimeSession from the runtime coordinator", () => {
-    updateRuntimeSessionState({
+    setSession({
       hasHardwareConnection: true,
       noModuleMode: false,
       wasmEnabled: true,
@@ -105,7 +109,7 @@ describe("runtimeDiagnostics (derived)", () => {
     });
 
     // Seed session store
-    updateRuntimeSessionState({
+    setSession({
       hasHardwareConnection: true,
       noModuleMode: false,
       wasmEnabled: true,

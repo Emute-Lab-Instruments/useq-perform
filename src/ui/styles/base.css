@@ -39,6 +39,33 @@
     --panel-groove: rgba(255, 255, 255, 0.06);
     --panel-ridge: rgba(255, 255, 255, 0.12);
     --section-separator: rgba(255, 255, 255, 0.08);
+
+    /* Stacking scale — single source of truth for z-index layering.
+       Values preserve today's effective stacking order; see z_index.css
+       for the element → layer assignments. Off-scale needs compose from
+       these (e.g. calc(var(--z-takeover) + 100)). Themes may not redefine
+       these — layering is theme-independent. */
+    --z-editor: 0;
+    --z-vis: 19;
+    --z-panel-widget: 25;
+    --z-toolbar: 30;
+    --z-toolbar-side: 35;
+    --z-panel: 100;
+    --z-overlay-menu: 500;
+    --z-modal-backdrop: 1000;
+    --z-modal: 1001;
+    --z-toast: 1100;
+    --z-takeover: 2000;
+
+    /* Semantic status colours — dark-theme defaults. themes.ts overrides
+       these per theme (light themes get darker, readable variants). */
+    --status-ok: #4ec9a0;
+    --status-warn: #ffb454;
+    --status-error: #ff6b6b;
+    --status-info: #7aa2f7;
+    /* Text placed on an accent-filled surface; contrast pairs with the
+       active theme accent. */
+    --on-accent: #10131a;
   }
 
 html,
@@ -94,4 +121,26 @@ input, button, select, textarea {
 
 *::-webkit-scrollbar-corner {
   background: transparent;
+}
+
+/* ── Focus visibility ───────────────────────────────────────────────────
+   Theme-aware keyboard focus ring. Zero-specificity :where() so component
+   styles can override; :focus-visible keeps mouse clicks ring-free. */
+:where(button, [role='button'], a, input, select, textarea, [tabindex]):focus-visible {
+  outline: 2px solid var(--accent-color, #00ff41);
+  outline-offset: 2px;
+}
+
+/* ── Reduced motion ────────────────────────────────────────────────────
+   Collapse transitions and animations (including infinite pulses) for
+   users who ask the OS for reduced motion. */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
 }

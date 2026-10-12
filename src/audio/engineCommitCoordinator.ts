@@ -428,20 +428,20 @@ export function buildCommitControlLayout(
     audioOutputs.set(decl.identity, decl.audio_outputs);
   }
   const mutableChannelsByIdentity = new Map<string, WorkletControlChannel[]>();
+  let fastChannel = 0;
+  let eventChannel = 0;
   for (let compilerControlIndex = 0;
     compilerControlIndex < payload.controls.length;
     compilerControlIndex += 1) {
     const ctl = payload.controls[compilerControlIndex];
-    if (ctl.rate !== "block") continue;
-    const channel = channels.length;
-    channels.push({
-      identity: ctl.identity,
-      param: ctl.param,
-      compilerControlIndex,
-      channel,
+    const rate = ctl.smoothing === "latch" ? "event" : ctl.rate;
+    const channel = rate === "block" ? channels.length
+      : rate === "fast" ? fastChannel++ : eventChannel++;
+    if (rate === "block") channels.push({
+      identity: ctl.identity, param: ctl.param, compilerControlIndex, channel,
     });
     const own = mutableChannelsByIdentity.get(ctl.identity) ?? [];
-    own.push({ param: ctl.param, channel });
+    own.push({ param: ctl.param, channel, rate, smoothing: ctl.smoothing });
     mutableChannelsByIdentity.set(ctl.identity, own);
   }
   for (const [identity, own] of mutableChannelsByIdentity) {

@@ -1,7 +1,7 @@
 /**
  * Hole tests (§2.9, §5.2.11).
  */
-import { beforeEach, describe, expect, it } from "vitest";
+import { describe, expect, it } from "vitest";
 
 import { defaultIdGen, __resetIdCounterForTests } from "../types.ts";
 import {
@@ -24,7 +24,7 @@ import {
 import { makeMutators } from "../mutate.ts";
 import { nav } from "../nav.ts";
 import { findById } from "../traversal.ts";
-import type { AddressableNode, IdGen } from "../types.ts";
+import type { AddressableNode } from "../types.ts";
 
 describe("holes — predicates and helpers", () => {
   it("isHoleType recognises every legal type and rejects others", () => {

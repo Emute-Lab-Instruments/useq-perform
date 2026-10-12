@@ -56,21 +56,11 @@ import {
 } from "@codemirror/commands";
 import { SAMPLE_CODE } from "../../lib/keybindings/sampleCode.ts";
 import { openPalette } from "../../ui/keybindings/ActionPalette.tsx";
+import { beginCalibration } from "../../ui/adapters/calibrationRuntime.ts";
+import { toggleLiveEditPanel } from "../../ui/adapters/liveEditPanel.tsx";
+import { notify } from "../../contracts/toastChannels.ts";
 import { executeEditorCommand } from "./editorCommandRouter.ts";
-import {
-  startGrab,
-  endGrab,
-  isGrabActive,
-  recordGrabMove,
-  getGrabMoveCount,
-  getGrabSnapshot,
-} from "../../lib/gamepad/grabState.ts";
-import {
-  setGrabMode,
-  setStructState,
-  structField,
-} from "../extensions/structure/adapter/stateField.ts";
-import { pathsFromCursorSet } from "../extensions/structure/adapter/cursorPath.ts";
+import { startGrab, endGrab, cancelGrab, moveGrab } from "../grabSession.ts";
 import { complete_keymap as completeClojureKeymap } from "@nextjournal/clojure-mode";
 import {
   openMainMenu,
@@ -82,6 +72,7 @@ import {
 import { resolveItems } from "../../ui/mainMenu/menuItems.ts";
 import { isMenuOpen, dispatchMenuInput } from "../../lib/menu/store.ts";
 import { ZEN_HASH_PREFIX } from "../../zen/routing.ts";
+import { selectMainMenuAction } from "../../zen/mainMenuAction.ts";
 
 // ---------------------------------------------------------------------------
 // Main-menu helpers (main-menu.md §1.4)
@@ -95,14 +86,11 @@ import { ZEN_HASH_PREFIX } from "../../zen/routing.ts";
  * vector-mark are left to their own exit gestures — closing them blindly here
  * would risk committing or discarding in-flight edits.)
  */
-function closeActiveSubModes(view: EditorView): void {
+function closeActiveSubModes(view?: EditorView): void {
   if (isMenuOpen()) {
     dispatchMenuInput({ kind: "cancel" });
   }
-  if (isGrabActive()) {
-    endGrab();
-    view.dispatch({ effects: setGrabMode.of(false) });
-  }
+  if (view) endGrab(view);
 }
 
 /**
@@ -138,34 +126,6 @@ const killToEndOfList = findClojureHandler("Ctrl-k");
 // op, and applies the resulting tree change back as a CodeMirror transaction.
 // ---------------------------------------------------------------------------
 
-function restoreCursorsFromPaths(
-  paths: ReadonlyArray<ReadonlyArray<number>>,
-  tree: import("../extensions/structure/core/types.ts").Tree,
-): import("../extensions/structure/core/types.ts").CursorSet {
-  type CoreNode = import("../extensions/structure/core/types.ts").Node;
-  const out = paths.map((p) => {
-    let cur: CoreNode = tree.root;
-    for (const i of p) {
-      if (
-        cur.kind === "list" || cur.kind === "vector" ||
-        cur.kind === "map" || cur.kind === "set" || cur.kind === "document"
-      ) {
-        const next: CoreNode | undefined = cur.children[i];
-        if (!next) { cur = tree.root; break; }
-        cur = next;
-      } else {
-        cur = tree.root;
-        break;
-      }
-    }
-    return { kind: "node" as const, target: cur.id };
-  });
-  if (out.length === 0) {
-    return { primary: { kind: "node" as const, target: tree.root.id }, secondaries: [] };
-  }
-  return { primary: out[0], secondaries: out.slice(1) };
-}
-
 function structHandler(dispatchName: StructuralAction): EditorHandler {
   return (view, source = "keyboard") =>
     executeEditorCommand(view, {
@@ -194,6 +154,19 @@ const handlers: Partial<Record<ActionId, ActionHandler>> = {
   "panel.vis": toggleSerialVis,
   "vis.screenshot": () => { requestVisScreenshot(); return true; },
   "view.zenMode": () => { enterZenMode(); return true; },
+  // calibration.md §2.1: beginCalibration() already gates on a connected
+  // JSON-protocol module and returns false otherwise — surface that as
+  // feedback instead of a silent no-op.
+  "calibration.begin": () => {
+    if (beginCalibration()) return true;
+    notify({
+      message: "Calibration needs a connected uSEQ module speaking the JSON protocol.",
+      kind: "warn",
+    });
+    return false;
+  },
+  // live-edit.md §5.1.5
+  "liveEdit.panel.toggle": () => { toggleLiveEditPanel(); return true; },
 
   // -- Vis (expression-gutter.md §4.1) ---------------------------------------
   "vis.toggleAtHalo": (view: EditorView) => handleToggleVisAtHalo(view),
@@ -236,14 +209,13 @@ const handlers: Partial<Record<ActionId, ActionHandler>> = {
     if (item.type === "submenu") {
       dispatchMainMenu({ type: "pushSubmenu", submenuId: item.id });
     } else {
-      // Action items close the menu (resume or any other action)
-      closeMainMenu();
+      selectMainMenuAction(item.id);
     }
     return true;
   },
   "mainMenu.back": () => { dispatchMainMenu({ type: "back" }); return true; },
-  "mainMenu.adjustUp": () => { /* stub — no adjustable items yet */ return true; },
-  "mainMenu.adjustDown": () => { /* stub — no adjustable items yet */ return true; },
+  "mainMenu.adjustUp": () => false,
+  "mainMenu.adjustDown": () => false,
 
   // -- Editor ---------------------------------------------------------------
   "edit.pasteSample": (view: EditorView, source = "keyboard") =>
@@ -253,6 +225,8 @@ const handlers: Partial<Record<ActionId, ActionHandler>> = {
       source,
     }),
   "doc.symbol": showDocumentationForSymbol,
+  "namespace.pick": (view: EditorView, source = "keyboard") =>
+    executeEditorCommand(view, { kind: "openNamespacePicker", source }),
   "edit.undo": (view: EditorView, source = "keyboard") =>
     executeEditorCommand(view, { kind: "undo", source }),
   "edit.redo": (view: EditorView, source = "keyboard") =>
@@ -286,6 +260,8 @@ const handlers: Partial<Record<ActionId, ActionHandler>> = {
   // -- Structure (functional-core via adapter dispatcher) --------------------
   "edit.slurpFwd": structHandler("edit.slurpForward"),
   "edit.slurpBack": structHandler("edit.slurpBackward"),
+  "edit.atomSlurpFwd": structHandler("edit.atomSlurpForward"),
+  "edit.atomSlurpBack": structHandler("edit.atomSlurpBackward"),
   "edit.barfFwd": structHandler("edit.barfForward"),
   "edit.barfBack": structHandler("edit.barfBackward"),
   "edit.raise": structHandler("edit.raise"),
@@ -296,6 +272,24 @@ const handlers: Partial<Record<ActionId, ActionHandler>> = {
   "edit.wrapSet": structHandler("edit.encloseSet"),
   "edit.transposeFwd": structHandler("edit.transposeNext"),
   "edit.transposeBack": structHandler("edit.transposePrev"),
+  "edit.moveRight": structHandler("edit.moveRight"),
+  "edit.moveLeft": structHandler("edit.moveLeft"),
+  "edit.moveUp": structHandler("edit.moveUp"),
+  "edit.moveDown": structHandler("edit.moveDown"),
+  "edit.cut": structHandler("edit.cut"),
+  "edit.copy": structHandler("edit.copy"),
+  "edit.paste": structHandler("edit.paste"),
+  "edit.pasteBefore": structHandler("edit.pasteBefore"),
+  "edit.duplicate": structHandler("edit.duplicate"),
+  "actOn.cut": structHandler("edit.cut"),
+  "actOn.copy": structHandler("edit.copy"),
+  "actOn.paste": structHandler("edit.paste"),
+  "actOn.duplicate": structHandler("edit.duplicate"),
+  "actOn.wrapList": structHandler("edit.encloseList"),
+  "actOn.cancel": () => true,
+  "format.topLevel": structHandler("format.topLevel"),
+  "format.document": structHandler("format.document"),
+  "format.indentToFixedPoint": structHandler("format.indentToFixedPoint"),
 
   // -- Meta operations (§6.6) -----------------------------------------------
   "meta.add": structHandler("meta.add"),
@@ -347,89 +341,14 @@ const handlers: Partial<Record<ActionId, ActionHandler>> = {
   "liveEdit.vectorCancel": structHandler("liveEdit.vectorCancel"),
 
   // -- Grab mode (gamepad.md §6.6.4) -----------------------------------------
-  "actOn.grab": (view: EditorView) => {
-    if (isGrabActive()) return true;
-    const value = view.state.field(structField, false);
-    const doc = view.state.doc.toString();
-    const paths = value
-      ? pathsFromCursorSet(value.state.cursors, value.state.tree)
-      : [];
-    startGrab(doc, paths);
-    view.dispatch({ effects: setGrabMode.of(true) });
-    return true;
-  },
-  "actOn.drop": (view: EditorView) => {
-    if (!isGrabActive()) return false;
-    endGrab();
-    view.dispatch({ effects: setGrabMode.of(false) });
-    return true;
-  },
-  "actOn.cancelGrab": (view: EditorView, source = "gamepad") => {
-    if (!isGrabActive()) return false;
-    const snapshot = getGrabSnapshot();
-    const count = getGrabMoveCount();
-    endGrab();
-    for (let i = 0; i < count; i++) {
-      executeEditorCommand(view, { kind: "undo", source });
-    }
-    if (snapshot) {
-      const value = view.state.field(structField, false);
-      if (value) {
-        const cursors = restoreCursorsFromPaths(snapshot.cursorPaths, value.state.tree);
-        view.dispatch({
-          effects: [
-            setStructState.of({
-              state: { tree: value.state.tree, cursors },
-              idIndex: value.idIndex,
-              cursorPaths: snapshot.cursorPaths,
-            }),
-            setGrabMode.of(false),
-          ],
-        });
-        return true;
-      }
-    }
-    view.dispatch({ effects: setGrabMode.of(false) });
-    return true;
-  },
-  "actOn.duplicateDrop": (view: EditorView) => {
-    if (!isGrabActive()) return false;
-    endGrab();
-    view.dispatch({ effects: setGrabMode.of(false) });
-    return true;
-  },
-  "grab.moveLeft": (view: EditorView, source = "gamepad") => {
-    if (!isGrabActive()) return false;
-    const ok = executeEditorCommand(view, {
-      kind: "structural", action: "edit.transposePrev", source,
-    });
-    if (ok) recordGrabMove();
-    return ok;
-  },
-  "grab.moveRight": (view: EditorView, source = "gamepad") => {
-    if (!isGrabActive()) return false;
-    const ok = executeEditorCommand(view, {
-      kind: "structural", action: "edit.transposeNext", source,
-    });
-    if (ok) recordGrabMove();
-    return ok;
-  },
-  "grab.moveUp": (view: EditorView, source = "gamepad") => {
-    if (!isGrabActive()) return false;
-    const ok = executeEditorCommand(view, {
-      kind: "structural", action: "edit.raise", source,
-    });
-    if (ok) recordGrabMove();
-    return ok;
-  },
-  "grab.moveDown": (view: EditorView, source = "gamepad") => {
-    if (!isGrabActive()) return false;
-    const ok = executeEditorCommand(view, {
-      kind: "structural", action: "edit.encloseList", source,
-    });
-    if (ok) recordGrabMove();
-    return ok;
-  },
+  "actOn.grab": startGrab,
+  "actOn.drop": endGrab,
+  "actOn.cancelGrab": cancelGrab,
+  "actOn.duplicateDrop": endGrab,
+  "grab.moveLeft": (view: EditorView) => moveGrab(view, "edit.transposePrev"),
+  "grab.moveRight": (view: EditorView) => moveGrab(view, "edit.transposeNext"),
+  "grab.moveUp": (view: EditorView) => moveGrab(view, "edit.raise"),
+  "grab.moveDown": (view: EditorView) => moveGrab(view, "edit.encloseList"),
 
   // -- Insertion mode (character-level caret movement) ----------------------
   "insertion.left":  cursorCharLeft,

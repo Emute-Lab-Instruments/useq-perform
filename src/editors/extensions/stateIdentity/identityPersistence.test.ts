@@ -20,7 +20,7 @@
 import { describe, expect, it, beforeEach, afterEach, vi } from "vitest";
 import { EditorState } from "@codemirror/state";
 import { EditorView } from "@codemirror/view";
-// @ts-expect-error — clojure-mode has no type declarations
+
 import { default_extensions as clojureExtensions } from "@nextjournal/clojure-mode";
 
 import {
@@ -310,7 +310,7 @@ describe("VAL-ID-011: recoverIdentityMap rejects wrong-document metadata", () =>
       doc: '(synth "osc/sine" :freq 440)\n',
       extensions: [...clojureExtensions, field],
     });
-    const recognised = [];
+    const recognised: [] = [];
     // Build a snapshot for a DIFFERENT document fingerprint.
     const wrongSnap: IdentitySnapshot = {
       schemaVersion: 1,
@@ -434,7 +434,7 @@ describe("VAL-ID-012: recoverIdentityMap is conservative on partial document mat
 
 describe("VAL-ID-020 / VAL-ID-024: createIdentityPersistence wiring", () => {
   it("load() routes through the central persistence service", () => {
-    const spy: PersistenceCall[] = [];
+    const spy: Array<{ op: "load" | "save" | "remove"; key: string; value?: unknown }> = [];
     const adapter = createIdentityPersistence({
       load: (key, fallback) => {
         spy.push({ op: "load", key });
@@ -455,7 +455,7 @@ describe("VAL-ID-020 / VAL-ID-024: createIdentityPersistence wiring", () => {
   });
 
   it("save() routes a schema-versioned IdentitySnapshot through the service", () => {
-    const spy: PersistenceCall[] = [];
+    const spy: Array<{ op: "load" | "save" | "remove"; key: string; value?: unknown }> = [];
     const adapter = createIdentityPersistence({
       load: (k, fb) => persistenceLoad(k, fb),
       save: (k, v) => {
@@ -877,7 +877,7 @@ describe("VAL-ID-020: identity extension runs with injected dependencies", () =>
       doc: '(synth "osc/sine" :freq 440)\n',
       extensions: [...clojureExtensions, ...extensions],
     });
-    expect(entriesOf(view.state.field(extensions[0] as any).map)).toHaveLength(1);
+    expect(entriesOf(view.state.field(extensions[0] as import("@codemirror/state").StateField<import("./identityField.ts").IdentityFieldValue>).map)).toHaveLength(1);
     view.destroy();
   });
 });

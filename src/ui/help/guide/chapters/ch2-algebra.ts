@@ -28,10 +28,6 @@ const utri = (p: number): number => {
   return f < 0.5 ? f * 2 : 2 - f * 2;
 };
 
-/** Pulse wave with configurable width (0-1). */
-const _upulse = (width: number, p: number): number =>
-  frac(p) < width ? 1 : 0;
-
 /** fast(n, phase): speed up by factor n. */
 const fast = (n: number, p: number): number => frac(p * n);
 
@@ -47,31 +43,10 @@ const scale = (
   outMax: number,
 ): number => outMin + ((v - inMin) / (inMax - inMin)) * (outMax - outMin);
 
-/** clamp to 0-1. */
-const _clamp01 = (v: number): number => Math.max(0, Math.min(1, v));
-
 /** Simple from-list: pick item by phasor. */
 const fromList = (list: number[], p: number): number => {
   const idx = Math.min(Math.floor(frac(p) * list.length), list.length - 1);
   return list[idx];
-};
-
-/** Euclidean rhythm: k hits spread across n steps. */
-const _euclid = (k: number, n: number, p: number): number => {
-  const step = Math.floor(frac(p) * n);
-  return Math.floor(((step + 1) * k) / n) - Math.floor((step * k) / n) > 0
-    ? 1
-    : 0;
-};
-
-/** Linear interpolation between list values over a phasor. */
-const _interp = (list: number[], p: number): number => {
-  const f = frac(p);
-  const segments = list.length - 1;
-  const pos = f * segments;
-  const idx = Math.min(Math.floor(pos), segments - 1);
-  const t = pos - idx;
-  return list[idx] * (1 - t) + list[idx + 1] * t;
 };
 
 // ---------------------------------------------------------------------------

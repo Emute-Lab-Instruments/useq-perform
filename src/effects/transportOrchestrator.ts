@@ -6,8 +6,7 @@
 // TransportToolbar's onMount / createEffect hooks so it can run (and be
 // tested) without mounting any Solid component.
 
-import { createActor, type AnyActorRef } from "xstate";
-import { Effect } from "effect";
+import { createActor, type ActorRefFrom } from "xstate";
 import { transportMachine, type TransportState } from "../machines/transport.machine";
 import {
   SHARED_TRANSPORT_COMMANDS,
@@ -26,7 +25,8 @@ import {
   syncRuntimeWasmTransportState,
   type RuntimeSessionState,
 } from "../runtime/runtimeService";
-import { applyClockPolicy, listenForHardwareOverride } from "./transportClock";
+import { updateRuntimeWasmAudioTransport } from "../runtime/runtimeTransportService";
+import { applyClockPolicy, listenForHardwareOverride, restoreClockAfterHardwareDisconnect } from "./transportClock";
 
 // ── Pure helpers ─────────────────────────────────────────────────
 
@@ -62,7 +62,9 @@ export function extractTransportStateFromMeta(
 // ── Transport command helpers (call runtimeService directly) ─────
 
 const sendTransportCommand = (command: SharedTransportCommand) =>
-  sendRuntimeTransportCommand(command);
+  Promise.resolve().then(() => sendRuntimeTransportCommand(command)).catch((error) => {
+    console.error("Transport command failed", error);
+  });
 
 const play = () => sendTransportCommand(SHARED_TRANSPORT_COMMANDS.play);
 const pause = () => sendTransportCommand(SHARED_TRANSPORT_COMMANDS.pause);
@@ -72,17 +74,21 @@ const clear = () => sendTransportCommand(SHARED_TRANSPORT_COMMANDS.clear);
 
 // ── Types ───────────────────────────────────────────────────────
 
+type TransportActor = ActorRefFrom<typeof transportMachine>;
+
 export interface TransportOrchestrator {
   /** The xstate actor backing the transport machine. */
-  actor: AnyActorRef;
+  actor: TransportActor;
   /** Send an event to the transport machine. */
-  send: (event: any) => void;
+  send: TransportActor["send"];
   /** Current snapshot accessor (for UI binding). */
-  getSnapshot: () => any;
+  getSnapshot: TransportActor["getSnapshot"];
   /** Subscribe to actor state changes. Returns unsubscribe. */
-  subscribe: (cb: (snapshot: any) => void) => { unsubscribe: () => void };
+  subscribe: (cb: (snapshot: ReturnType<TransportActor["getSnapshot"]>) => void) => { unsubscribe: () => void };
   /** Tear down all listeners and stop the actor. */
   dispose: () => void;
+  /** Start browser-local playback while retaining the startup paused state. */
+  startBrowserLocalRuntime: () => void;
 }
 
 // ── Factory ─────────────────────────────────────────────────────
@@ -103,26 +109,56 @@ export interface TransportOrchestrator {
  * any side-effects.
  */
 export function createTransportOrchestrator(): TransportOrchestrator {
+  let audioTransportState: TransportState = "paused";
+  const playAudioTransport = () => {
+    const transition = audioTransportState === "stopped" ? "start" : "resume";
+    audioTransportState = "playing";
+    void updateRuntimeWasmAudioTransport(transition);
+  };
+  const pauseAudioTransport = () => {
+    audioTransportState = "paused";
+    void updateRuntimeWasmAudioTransport("pause");
+  };
+  const stopAudioTransport = () => {
+    audioTransportState = "stopped";
+    void updateRuntimeWasmAudioTransport("stop");
+  };
+
   // ── 1. Actor creation ──────────────────────────────────────────
   const machine = transportMachine.provide({
     actions: {
-      emitPlay:     () => { Effect.runPromise(play()); },
-      emitPause:    () => { Effect.runPromise(pause()); },
-      emitStop:     () => { Effect.runPromise(stop()); },
-      emitRewind:   () => { Effect.runPromise(rewind()); },
-      emitClear:    () => { Effect.runPromise(clear()); },
-      syncWasmPlay: () => { Effect.runPromise(syncRuntimeWasmTransportState("playing")).catch(() => undefined); },
-      syncWasmPause:() => { Effect.runPromise(syncRuntimeWasmTransportState("paused")).catch(() => undefined); },
-      syncWasmStop: () => { Effect.runPromise(syncRuntimeWasmTransportState("stopped")).catch(() => undefined); },
+      emitPlay:     () => { void play(); playAudioTransport(); },
+      emitPause:    () => { void pause(); pauseAudioTransport(); },
+      emitStop:     () => { void stop(); stopAudioTransport(); },
+      emitRewind:   () => { void rewind(); },
+      emitClear:    () => { void clear(); },
+      autoStartBrowserLocal: () => {
+        void play();
+        playAudioTransport();
+        applyClockPolicy("playing", "stopped");
+      },
+      syncWasmPlay: () => {
+        void syncRuntimeWasmTransportState("playing");
+        playAudioTransport();
+      },
+      syncWasmPause:() => {
+        void syncRuntimeWasmTransportState("paused");
+        pauseAudioTransport();
+      },
+      syncWasmStop: () => {
+        void syncRuntimeWasmTransportState("stopped");
+        stopAudioTransport();
+      },
     },
   });
   const actor = createActor(machine);
-  const send = (event: any) => actor.send(event);
+  const send: TransportActor["send"] = (event) => actor.send(event);
 
   // ── 2. Transport-state → clock policy ──────────────────────────
   // Machine boots in "paused" (spec §1.1). The no-runtime boot case is driven
   // to "stopped" below via an initial SYNC once the mode is known.
   let prevTransportState: TransportState = "paused";
+  let browserLocalAutoRun = false;
 
   const actorSub = actor.subscribe((snapshot) => {
     const current = snapshot.value as TransportState;
@@ -130,14 +166,29 @@ export function createTransportOrchestrator(): TransportOrchestrator {
     if (current === prevTransportState) return;
     const prev = prevTransportState;
     prevTransportState = current;
+    if (current !== "paused") browserLocalAutoRun = false;
     applyClockPolicy(current, prev);
   });
 
   // ── 3. Runtime-service subscriptions ───────────────────────────
+  let lastMode = getRuntimeServiceSnapshot().session.transportMode;
   const refreshMode = (
     runtimeState: RuntimeSessionState = getRuntimeServiceSnapshot()
   ) => {
-    send({ type: "UPDATE_MODE", mode: runtimeState.session.transportMode });
+    const previousMode = lastMode;
+    const mode = runtimeState.session.transportMode;
+    lastMode = mode;
+    send({ type: "UPDATE_MODE", mode });
+    if ((previousMode === "hardware" || previousMode === "both") && mode === "wasm") {
+      // Hardware time stops owning the clock on disconnect. Reapply policy
+      // using the current machine state so WASM resumes, freezes, or resets
+      // according to the transport state without requiring a user transition.
+      restoreClockAfterHardwareDisconnect(
+        mode,
+        browserLocalAutoRun ? "playing" : actor.getSnapshot().value as TransportState,
+      );
+      void updateRuntimeWasmAudioTransport("reanchor");
+    }
   };
 
   // Set initial mode before starting the actor
@@ -158,7 +209,7 @@ export function createTransportOrchestrator(): TransportOrchestrator {
 
   const removeProtocolReady = protocolReadyChannel.subscribe(
     () => {
-      Effect.runPromise(queryRuntimeHardwareTransportState()).then(syncState);
+      queryRuntimeHardwareTransportState().then(syncState);
     }
   );
 
@@ -188,12 +239,22 @@ export function createTransportOrchestrator(): TransportOrchestrator {
     actor.stop();
   }
 
+  function startBrowserLocalRuntime() {
+    if (getRuntimeServiceSnapshot().session.transportMode !== "wasm") return;
+    if (actor.getSnapshot().value === "stopped") {
+      send({ type: "SYNC", state: "paused" });
+    }
+    browserLocalAutoRun = true;
+    send({ type: "AUTO_START_BROWSER_LOCAL" });
+  }
+
   return {
     actor,
     send,
     getSnapshot: () => actor.getSnapshot(),
     subscribe: (cb) => actor.subscribe(cb),
     dispose,
+    startBrowserLocalRuntime,
   };
 }
 

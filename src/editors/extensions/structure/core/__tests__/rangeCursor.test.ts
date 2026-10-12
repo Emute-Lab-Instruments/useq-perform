@@ -19,9 +19,8 @@ import {
   stateOn,
   stateWithCursors,
   sym,
-  vec,
 } from "./builders.ts";
-import { nodeCursor, rangeCursor, singleCursor } from "../types.ts";
+import { rangeCursor, singleCursor } from "../types.ts";
 import type { RangeCursor, NodeCursor } from "../types.ts";
 
 // ─── Helpers ────────────────────��──────────────────────────────────────────

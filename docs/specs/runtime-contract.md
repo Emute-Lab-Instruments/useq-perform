@@ -22,6 +22,7 @@ For the higher-level product boundary and compatibility cuts, read [MAIN.md](MAI
 - `src/runtime/workers/wasmRuntime.worker.ts` — Worker-local WASM instantiation and ABI validation call site
 - `src/runtime/witnessEngine.ts` — isolated, non-production conformance-witness interpreter
 - `src/runtime/runtimeTransportService.ts` — fan-out of shared commands to both runtimes
+- `src/runtime/runtimeCodeEvaluation.ts` — live-session code-evaluation fan-out and per-runtime outcomes
 - `src/effects/transportOrchestrator.ts` — transport command dispatch
 - `src/contracts/wasmAbi.test.ts` — ABI contract tests
 - `src/contracts/useqRuntimeContract.test.ts` — capability split tests
@@ -85,7 +86,7 @@ These symbols are listed in `src-useq/scripts/build_wasm.sh` under `-s EXPORTED_
 | Symbol | cwrap return | cwrap args | Purpose |
 |--------|-------------|------------|---------|
 | `useq_init` | `null` | `[]` | Initialize the interpreter |
-| `useq_eval` | `"string"` | `["string"]` | Evaluate ModuLisp code |
+| `useq_eval` | `"number"` | `["string"]` | Evaluate ModuLisp code and return an owned result pointer |
 | `useq_update_time` | `null` | `["number"]` | Inject wall-clock time |
 | `useq_eval_output` | `"number"` | `["string", "number"]` | Sample a named output at a time |
 
@@ -102,9 +103,12 @@ These helpers are defined in `wasm_wrapper.cpp` and the current build script exp
 | `useq_tick_and_project` | `"number"` | evolving; see [visualisation.md §7.2](visualisation.md) | Combined live tick + visualisation projection-fork operation |
 | `useq_synth_artifacts` | `"string"` | `[]` | Read the versioned compiler patch/control snapshot |
 | `useq_tick_synth_controls` | `"number"` | `["number", "number", "number"]` | Advance the live VM once and write controls in exact artefact-table order |
-| `useq_last_error` | `"string"` | `[]` | Read last error message |
-| `useq_last_diagnostics` | `"string"` | `[]` | Read diagnostics from the most recent eval |
-| `useq_active_diagnostics` | `"string"` | `[]` | Read active output, named-state, and synth-control diagnostics |
+| `useq_last_error` | `"number"` | `[]` | Read owned error-message pointer (host decodes and frees it) |
+| `useq_last_diagnostics` | `"number"` | `[]` | Read owned diagnostics pointer (host decodes and frees it) |
+| `useq_active_diagnostics` | `"number"` | `[]` | Read owned active-diagnostics pointer (host decodes and frees it) |
+| `useq_output_classifications` | `"number"` | `[]` | Read static packed output classification bytes |
+| `useq_projection_frontier_time` | `"number"` | `[]` | Read the projection fork frontier after projection |
+| `useq_clear_synth_declarations` | `"number"` | `[]` | Clear host synth declarations while preserving the running program |
 
 Current expectation:
 
@@ -145,6 +149,8 @@ The canonical editor constants live in:
 - `../../src/contracts/wasmAbi.ts` — WASM export signatures and ABI validation
 
 Both `src/effects/transportOrchestrator.ts` and `src/runtime/wasmInterpreter.ts` import from these files instead of maintaining separate command lists or hard-coded symbol strings.
+
+Arbitrary editor code is port-specific rather than part of the six-command shared transport floor. `runtimeCodeEvaluation.ts` resolves the current `RuntimeSession`, `WebSerialHostPort`, and selected Worker `WasmRuntimePort` for each dispatch. It returns separate outcomes and names diagnostic authority; `editorEvaluation.ts` consumes that result and does not import the JSON protocol or active-WASM lookup.
 
 ## Drift Prevention
 

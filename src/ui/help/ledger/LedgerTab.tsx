@@ -18,6 +18,7 @@ import { For, Show, createMemo, createResource, createSignal, batch } from "soli
 import { SpecDocument, clauseAnchorId } from "./SpecDocument";
 import { WitnessDetail } from "./WitnessDetail";
 import { ClauseBadge } from "./ClauseBadge";
+import { LoadingState } from "../../LoadingState";
 import {
   cancelLedgerRun,
   clearLedgerResults,
@@ -310,7 +311,7 @@ export function LedgerTab(props: LedgerTabProps = {}) {
         fallback={
           <Show
             when={loadError()}
-            fallback={<p class="ledger-loading">Loading the Engine Ledger…</p>}
+            fallback={<LoadingState label="Loading the Engine Ledger…" class="ledger-loading" />}
           >
             <p class="ledger-error">
               Could not load the Ledger assets: {loadError()}. Run{" "}

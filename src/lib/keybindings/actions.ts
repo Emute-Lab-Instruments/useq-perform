@@ -91,6 +91,11 @@ export const actions = {
     reversible: false,
     icon: "target",
   },
+  "calibration.begin": {
+    description: "Begin CV output calibration (opens the picker; needs a connected module)",
+    category: "ui",
+    reversible: false,
+  },
 
   // -- Vis (expression-gutter.md §4.1) --------------------------------------
 
@@ -117,6 +122,12 @@ export const actions = {
     category: "editor",
     reversible: false,
     icon: "book-open",
+    requiresEditor: true,
+  },
+  "namespace.pick": {
+    description: "Choose operator namespace",
+    category: "editor",
+    reversible: true,
     requiresEditor: true,
   },
   "edit.undo": {
@@ -169,6 +180,61 @@ export const actions = {
     requiresEditor: true,
   },
 
+  "edit.moveRight": {
+    description: "Move focused node right",
+    category: "structure",
+    reversible: true,
+    requiresEditor: true,
+  },
+  "edit.moveLeft": {
+    description: "Move focused node left",
+    category: "structure",
+    reversible: true,
+    requiresEditor: true,
+  },
+  "edit.moveUp": {
+    description: "Move focused node up",
+    category: "structure",
+    reversible: true,
+    requiresEditor: true,
+  },
+  "edit.moveDown": {
+    description: "Move focused node down",
+    category: "structure",
+    reversible: true,
+    requiresEditor: true,
+  },
+  "edit.cut": {
+    description: "Cut focused node",
+    category: "editor",
+    reversible: true,
+    requiresEditor: true,
+  },
+  "edit.copy": {
+    description: "Copy focused node",
+    category: "editor",
+    reversible: false,
+    requiresEditor: true,
+  },
+  "edit.paste": {
+    description: "Paste after focused node",
+    category: "editor",
+    reversible: true,
+    requiresEditor: true,
+  },
+  "edit.pasteBefore": {
+    description: "Paste before focused node",
+    category: "editor",
+    reversible: true,
+    requiresEditor: true,
+  },
+  "edit.duplicate": {
+    description: "Duplicate focused node",
+    category: "editor",
+    reversible: true,
+    requiresEditor: true,
+  },
+
   // -- Structure (clojure-mode remaps) --------------------------------------
 
   "edit.slurpFwd": {
@@ -176,6 +242,18 @@ export const actions = {
     category: "structure",
     reversible: true,
     icon: "chevron-right",
+    requiresEditor: true,
+  },
+  "edit.atomSlurpFwd": {
+    description: "Promote and slurp forward",
+    category: "structure",
+    reversible: true,
+    requiresEditor: true,
+  },
+  "edit.atomSlurpBack": {
+    description: "Promote and slurp backward",
+    category: "structure",
+    reversible: true,
     requiresEditor: true,
   },
   "edit.slurpBack": {
@@ -477,18 +555,20 @@ export const actions = {
     description: "Toggle manual control for left stick",
     category: "gamepad",
     reversible: false,
+    requiresEditor: true,
   },
   "control.toggleManualRight": {
     description: "Toggle manual control for right stick",
     category: "gamepad",
     reversible: false,
+    requiresEditor: true,
   },
 
 
   // -- Act-on layer (gamepad.md §6.6) ---------------------------------------
 
-  "actOn.open": {
-    description: "Select node for action (open act-on layer)",
+  "actOn.cancel": {
+    description: "Cancel act-on and return to the editor",
     category: "gamepad",
     reversible: false,
     requiresEditor: true,
@@ -701,43 +781,6 @@ export const actions = {
     reversible: false,
   },
 
-  // -- Picker ---------------------------------------------------------------
-
-  "picker.up": {
-    description: "Picker: move up",
-    category: "menu",
-    reversible: false,
-    repeatable: true,
-  },
-  "picker.down": {
-    description: "Picker: move down",
-    category: "menu",
-    reversible: false,
-    repeatable: true,
-  },
-  "picker.left": {
-    description: "Picker: move left",
-    category: "menu",
-    reversible: false,
-    repeatable: true,
-  },
-  "picker.right": {
-    description: "Picker: move right",
-    category: "menu",
-    reversible: false,
-    repeatable: true,
-  },
-  "picker.select": {
-    description: "Picker: select item",
-    category: "menu",
-    reversible: false,
-  },
-  "picker.cancel": {
-    description: "Picker: dismiss",
-    category: "menu",
-    reversible: false,
-  },
-
   // -- Insertion mode (character-level caret movement) ----------------------
 
   "insertion.left": {
@@ -783,6 +826,11 @@ export const actions = {
 
   // -- Live-Edit ------------------------------------------------------------
 
+  "liveEdit.panel.toggle": {
+    description: "Toggle the dockable live-edit panel",
+    category: "ui",
+    reversible: false,
+  },
   "liveEdit.mark": {
     description:
       "Toggle live-edit on the cursor's literal: wrap if bare, replace with current value if already wrapped",

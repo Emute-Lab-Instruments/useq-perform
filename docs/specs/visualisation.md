@@ -57,7 +57,7 @@ layer: behavioural
 
 ## 2. Past Values — Recorded History
 
-Past values are ground truth: what the signal engine actually produced as time advanced.
+Past values are recorded engine output, with exact retrospective evaluation permitted for unchanged pure signals after sampling interruptions (§2.5.1).
 
 2.1 **Recording model.** The browser-local WASM engine is ticked on a monotonic sampling timeline, not limited to one tick per animation frame. The target live tick rate is `pixelMatchedPastRate × visualisation.temporalSampleRateMultiplier`, where the multiplier is clamped to `0.05..1.0`. A multiplier of `1.0` means every horizontal visual sample column can receive its own state-advancing temporal sample. Each committed tick computes all active output values, commits state, and records the results into a **per-output rolling buffer**. This tick stream is the authoritative source of past values.
 
@@ -72,6 +72,8 @@ Past values are ground truth: what the signal engine actually produced as time a
 2.4 **Past values are never overwritten on expression change.** When the user evaluates a new expression for an output, the rolling buffer retains all samples recorded under the old expression. The past half of the vis panel shows what actually happened, including the old expression's trace right up to the moment of change.
 
 2.5 **Visual discontinuity at expression boundaries.** When a new expression produces different values from the old one, there will be a visible discontinuity at the moment of change (past values from old expression, future values from new expression). This is intentional — the visualisation is honest about what happened vs what will happen.
+
+2.5.1 **Sampling interruptions.** When background throttling or stalled sampling leaves a gap longer than the greater of 250 ms or four target sample intervals, the past trace breaks across that interval. Recorded history on either side is retained. Unchanged compiler-classified pure outputs backfill the visible missing interval by evaluating the last-known signal at its original timestamps through the state-preserving batch evaluator. Reconstruction is bounded by buffer capacity and 8192 samples per output. Expression, parameter, or tempo invalidation forbids reconstruction across that boundary; late invalidated results are discarded. Input-dependent, stateful, unknown, and failed reconstructions retain a gap. The renderer must not linearly interpolate across missing history. Resuming rendering does not pause or reset the transport clock.
 
 2.6 **Hardware-only mode.** In hardware-only mode (WASM unavailable), past values come from hardware-streamed serial buffers. The rolling buffer accumulates from the serial stream parser instead of from WASM ticks.
 
@@ -219,9 +221,11 @@ This section specifies new WASM ABI exports required by the faithful-past / proj
 
 The classification is recomputed by the compiler on each `useq_eval`. The returned pointer is to WASM-side static storage (caller reads via `HEAPU8`; valid until next `useq_eval`).
 
-7.4 **`useq_output_dependencies(output_index: number) → pointer`** — For the given output, return a bitmask of referenced external input channels as a `uint32`. Bit `i` is set if the output's expression graph reads `g_hw_inputs[i]`. Returns `0` if the output is inactive, pure, or has no input dependencies. The returned value is a simple integer (no heap allocation).
+The production Worker snapshot also includes per-output health for the named `a1–a8`, `d1–d8`, and `s1–s8` outputs, read through `useq_output_health(name)`: `0` idle, `1` running, `2` fallback, `3` error, and `-1` for an invalid name or uninitialised runtime. It includes one `useq_output_semantic_effects(index)` bitmask per output slot so consumers can retain the compiler's denotational effect metadata alongside the visualisation classification. The effect bits follow `ProgramEffect` in `src-useq/uSEQ/src/signal_engine/program_semantics.h`.
 
-7.5 All new exports are **optional** (probed at runtime via `probeOptionalWasmExport`). If absent, the sampler falls back to the existing per-frame full-window batch evaluation (§5 degrades gracefully to the pre-faithful-past behaviour).
+7.4 **`useq_output_dependencies(output_index: number) → uint32`** — For the given output, return a bitmask of referenced external input channels. Bit `i` is set if the output's expression graph reads `g_hw_inputs[i]`. Returns `0` if the output is inactive, pure, or has no input dependencies. The returned value is a simple integer (no heap allocation).
+
+7.5 All new exports are **optional** (probed at runtime via `probeOptionalWasmExport`). If classification or dependency exports are absent, the sampler falls back to conservative invalidation and the existing per-frame full-window batch evaluation (§5 degrades gracefully to the pre-faithful-past behaviour). Missing health or semantic-effect exports produce empty health data or zero effect masks without disabling classification.
 
 ---
 

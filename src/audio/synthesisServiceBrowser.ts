@@ -93,6 +93,12 @@ export function wrapBrowserAudioContext(context: BrowserAudioContext): AudioCont
     suspend() {
       return context.suspend();
     },
+    addEventListener(type, listener) {
+      context.addEventListener?.(type, listener);
+    },
+    removeEventListener(type, listener) {
+      context.removeEventListener?.(type, listener);
+    },
     close() {
       return context.close();
     },
@@ -174,21 +180,7 @@ export function createBrowserNodeDefModuleLoader(
     // service transfers only one of the two per def). Returning the
     // bytes here lets the contract helper
     // (buildModuleTransferPayload) pick the right field without
-    // guessing. The bytes are ALSO stashed on the compiled module
-    // for any caller that still reads the legacy __sourceBytes
-    // field (no production caller after this change, but the stash
-    // keeps the field available for diagnostics).
-    try {
-      Object.defineProperty(compiled, "__sourceBytes", {
-        value: bytes,
-        writable: false,
-        enumerable: false,
-        configurable: false,
-      });
-    } catch {
-      // defineProperty may fail on platform objects; ignore — the
-      // explicit wasmBytes return field carries the bytes regardless.
-    }
+    // guessing.
     return { module, compiledWasm: compiled, wasmBytes: bytes };
   };
 }
@@ -478,7 +470,7 @@ export interface BrowserSynthesisOptions {
    * when omitted, the service computes the diff and posts worklet
    * messages but the producer does not tag blocks with the new epoch.
    */
-  readonly workerPort?: SynthesisWorkerPort;
+  readonly workerPort?: SynthesisWorkerPort | (() => SynthesisWorkerPort | undefined);
 }
 
 /**

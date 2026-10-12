@@ -1,8 +1,11 @@
 import { createSignal, For, Show } from "solid-js";
 import type { ChromeProps, ChromeMode, TileSlot, Geometry } from "./types";
+import { loadTileSlot, saveTileSlot } from "./geometry";
 
 /** Predefined layout slot geometries (in viewport percentages). */
 const SLOT_GEOMETRIES: Record<TileSlot, Geometry> = {
+  "left-third":   { x: 2,  y: 5,  w: 31, h: 90 },
+  "left-half":    { x: 2,  y: 5,  w: 48, h: 90 },
   "right-third":  { x: 67, y: 5,  w: 31, h: 90 },
   "right-half":   { x: 50, y: 5,  w: 48, h: 90 },
   "bottom-half":  { x: 2,  y: 52, w: 96, h: 46 },
@@ -13,6 +16,8 @@ const SLOT_GEOMETRIES: Record<TileSlot, Geometry> = {
 
 /** Miniature preview rectangles for each slot (relative to a 48x36 thumbnail). */
 const SLOT_PREVIEWS: Record<TileSlot, { left: string; top: string; width: string; height: string }> = {
+  "left-third":   { left: "2%",  top: "5%",  width: "32%", height: "90%" },
+  "left-half":    { left: "2%",  top: "5%",  width: "48%", height: "90%" },
   "right-third":  { left: "66%", top: "5%",  width: "32%", height: "90%" },
   "right-half":   { left: "50%", top: "5%",  width: "48%", height: "90%" },
   "bottom-half":  { left: "2%",  top: "52%", width: "96%", height: "46%" },
@@ -22,8 +27,9 @@ const SLOT_PREVIEWS: Record<TileSlot, { left: string; top: string; width: string
 };
 
 const SLOT_NAMES: TileSlot[] = [
-  "right-third", "right-half", "bottom-half",
-  "bottom-right", "center-large", "top-right",
+  "left-third", "left-half", "right-third",
+  "right-half", "bottom-half", "bottom-right",
+  "center-large", "top-right",
 ];
 
 function slotToStyle(slot: TileSlot) {
@@ -37,13 +43,17 @@ function slotToStyle(slot: TileSlot) {
 }
 
 export function TileChrome(props: ChromeProps) {
-  const [currentSlot, setCurrentSlot] = createSignal<TileSlot>("right-third");
+  const initialSlot: TileSlot =
+    loadTileSlot(props.panelId, SLOT_NAMES) ??
+    (props.side === "left" ? "left-third" : "right-third");
+  const [currentSlot, setCurrentSlot] = createSignal<TileSlot>(initialSlot);
   const [mode, setMode] = createSignal<ChromeMode>("normal");
-  const [prevSlot, setPrevSlot] = createSignal<TileSlot>("right-third");
+  const [prevSlot, setPrevSlot] = createSignal<TileSlot>(initialSlot);
   const [pickerOpen, setPickerOpen] = createSignal(false);
 
   function selectSlot(slot: TileSlot) {
     setCurrentSlot(slot);
+    saveTileSlot(props.panelId, slot);
     setPickerOpen(false);
     if (mode() !== "normal") setMode("normal");
   }
@@ -85,6 +95,9 @@ export function TileChrome(props: ChromeProps) {
           style={{ bottom: `${chipOffset()}px` }}
           onClick={restore}
           title={`Restore ${props.title}`}
+          role="button"
+          tabIndex={0}
+          onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); restore(); } }}
         >
           {props.title}
         </div>
@@ -93,7 +106,8 @@ export function TileChrome(props: ChromeProps) {
       <Show when={mode() !== "collapsed"}>
         <div
           class="panel-chrome panel-chrome--tile"
-          style={slotToStyle(currentSlot())}
+          style={{ ...slotToStyle(currentSlot()), "--panel-stack": String(props.stackIndex ?? 0) }}
+          data-panel-id={props.panelId}
         >
           {/* Title bar */}
           <div class="panel-chrome-title-bar">

@@ -18,7 +18,6 @@ import { describe, expect, it, beforeEach } from "vitest";
 import {
   ENGINE_STATE_REASONS,
   ENGINE_TRANSITIONS,
-  engineLifecycle,
   engineTransitionTrigger,
   engineStateChanged,
   isAllowedEngineTransition,
@@ -144,9 +143,9 @@ describe("synthesisChannels — publication", () => {
 
   it("publishEngineState freezes the snapshot (VAL-HOST-011)", () => {
     const before = snapshot("running");
-    let received: EngineStateSnapshot | null = null;
+    const received: EngineStateSnapshot[] = [];
     const unsub = engineStateChanged.subscribe((s) => {
-      received = s;
+      received.push(s);
     });
     try {
       publishEngineState(before);
@@ -154,42 +153,28 @@ describe("synthesisChannels — publication", () => {
       expect(Object.isFrozen(before)).toBe(false);
       // The snapshot received by channel subscribers is frozen (the
       // canonical immutable telemetry surface).
-      expect(received).not.toBeNull();
-      expect(Object.isFrozen(received)).toBe(true);
-      expect(received?.state).toBe("running");
+      expect(received).toHaveLength(1);
+      expect(Object.isFrozen(received[0])).toBe(true);
+      expect(received[0]?.state).toBe("running");
     } finally {
       unsub();
     }
   });
 
   it("publishEngineState notifies channel subscribers and the store", () => {
-    let received: EngineStateSnapshot | null = null;
+    const received: EngineStateSnapshot[] = [];
     const unsub = engineStateChanged.subscribe((s) => {
-      received = s;
+      received.push(s);
     });
     try {
       publishEngineState({ ...snapshot("error"), reasonKey: "PRODUCER_TIMEOUT" });
-      expect(received?.state).toBe("error");
-      expect(received?.reasonKey).toBe("PRODUCER_TIMEOUT");
-      expect(Object.isFrozen(received)).toBe(true);
+      expect(received[0]?.state).toBe("error");
+      expect(received[0]?.reasonKey).toBe("PRODUCER_TIMEOUT");
+      expect(Object.isFrozen(received[0])).toBe(true);
       expect(engineStateStore.current.state).toBe("error");
     } finally {
       unsub();
     }
   });
 
-  it("lifecycle channel receives an event per publish", () => {
-    // The lifecycle channel is a flat audit trail of every transition.
-    // The synthesis service emits lifecycle events on each transition;
-    // direct publishEngineState callers do not (the service is the sole
-    // emitter of lifecycle events).
-    const events: number[] = [];
-    const unsub = engineLifecycle.subscribe((e) => events.push(e.transitionCount));
-    try {
-      // No direct emit here; just verify subscription works.
-      expect(events).toEqual([]);
-    } finally {
-      unsub();
-    }
-  });
 });

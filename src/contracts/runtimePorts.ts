@@ -46,6 +46,9 @@
 
 import type { TransportState } from "../machines/transport.machine";
 import type { SharedTransportCommand } from "./useqRuntimeContract";
+// Sanctioned contracts→runtime crossing (see eslint.config.js): this port
+// surface re-exposes the Worker wire protocol's telemetry snapshot type.
+import type { ProducerTelemetrySnapshot } from "../runtime/workers/wasmRuntimeWorkerProtocol.ts";
 import type {
   RuntimeDiagnostic,
   RuntimeProtocolMode,
@@ -156,6 +159,18 @@ export interface WebSerialHostPort extends SharedRuntimePort {
   ): Promise<void>;
 
   /**
+   * Evaluate code and return the diagnostics owned by that exact hardware
+   * request. Runtime-owned editor fan-out uses this instead of reaching
+   * through the port to the JSON-protocol adapter.
+   */
+  evalCodeWithDiagnostics(code: string): Promise<{
+    success: boolean;
+    result: string | null;
+    diagnostics: RuntimeDiagnostic[];
+    error?: string;
+  }>;
+
+  /**
    * Request a full interpreter state snapshot from the hardware.
    *
    * Sends a `get-state` JSON request and parses the `state-snapshot`
@@ -200,6 +215,7 @@ export type ProjectionMode = 0 | 1 | 2;
 export interface TickAndProjectResult {
   tickValues: Map<string, number>;
   projectionSamples: SampleSeriesMap;
+  projectionFrontierTime?: number;
 }
 
 /**
@@ -225,6 +241,10 @@ export interface OutputClassification {
   classes: OutputClass[];
   /** Per-output bitmask of referenced hardware input channels. */
   inputMasks: number[];
+  /** Runtime health state (0 idle, 1 running, 2 fallback, 3 error) by output name. */
+  outputHealth: Record<string, number>;
+  /** Program semantic-effect bitmask for each output index (0–41). */
+  semanticEffects: number[];
 }
 
 /** Metadata for a live-edit slot returned from the WASM runtime. */
@@ -545,9 +565,7 @@ export interface WasmRuntimePort extends SharedRuntimePort {
    * Read a producer telemetry snapshot. Returns `null` when the
    * producer has not been started.
    */
-  producerReadTelemetry(): Promise<
-    import("../runtime/workers/wasmRuntimeWorkerProtocol").ProducerTelemetrySnapshot | null
-  >;
+  producerReadTelemetry(): Promise<ProducerTelemetrySnapshot | null>;
 
   /**
    * Clear the WASM compiler's synth declarations by evaluating `(useq-clear)`.

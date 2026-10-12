@@ -6,7 +6,11 @@
 
 .panel-chrome {
   position: fixed;
-  z-index: 60;
+  /* --panel-stack is set inline from the panel stacking order (last raised = highest). */
+  z-index: calc(var(--z-panel, 100) + var(--panel-stack, 0));
+  max-width: 100vw;
+  max-height: 100vh;
+  max-height: 100dvh;
   display: flex;
   flex-direction: column;
   border: 1px solid var(--panel-border);
@@ -29,7 +33,6 @@
 .panel-chrome-title-bar {
   display: flex;
   align-items: center;
-  height: 32px;
   min-height: 32px;
   padding: 0 8px;
   background-color: var(--toolbar-bg);
@@ -51,6 +54,8 @@
 }
 
 .panel-chrome-title-bar .chrome-btn {
+  position: relative;
+  flex-shrink: 0;
   width: 20px;
   height: 20px;
   display: flex;
@@ -65,6 +70,22 @@
   font-size: 14px;
   line-height: 1;
   transition: background 0.12s ease, color 0.12s ease;
+}
+
+/* Touch-friendly hit target: at least 32x32px regardless of the visual size. */
+.panel-chrome-title-bar .chrome-btn::before {
+  content: "";
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: max(100%, 32px);
+  height: max(100%, 32px);
+  transform: translate(-50%, -50%);
+}
+
+.panel-chrome-title-bar .chrome-btn:focus-visible {
+  outline: 2px solid var(--accent-color);
+  outline-offset: 1px;
 }
 
 .panel-chrome-title-bar .chrome-btn:hover {
@@ -177,7 +198,15 @@
   cursor: default;
 }
 
-/* Left-edge resize handle */
+/* Drawer docked to the left side (second side-by-side panel) */
+.panel-chrome--drawer-left {
+  right: auto;
+  left: 0;
+  border-left: none;
+  border-right: 1px solid var(--panel-border);
+}
+
+/* Inner-edge resize handle (left edge for right drawers, right edge for left drawers) */
 .drawer-resize-edge {
   position: absolute;
   left: -3px;
@@ -188,6 +217,11 @@
   z-index: 1;
 }
 
+.panel-chrome--drawer-left .drawer-resize-edge {
+  left: auto;
+  right: -3px;
+}
+
 /* Collapsed tab handle */
 .drawer-collapsed-tab {
   position: fixed;
@@ -195,7 +229,7 @@
   top: 50%;
   transform: translateY(-50%);
   width: 32px;
-  z-index: 60;
+  z-index: var(--z-panel, 100);
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -213,6 +247,14 @@
   cursor: pointer;
   box-shadow: -2px 0 8px rgba(0, 0, 0, 0.15);
   transition: background 0.15s ease;
+}
+
+.drawer-collapsed-tab--left {
+  right: auto;
+  left: 0;
+  border-radius: 0 var(--panel-border-radius, 2px) var(--panel-border-radius, 2px) 0;
+  border-right: 1px solid var(--panel-border);
+  border-left: none;
 }
 
 .drawer-collapsed-tab:hover {
@@ -237,7 +279,7 @@
   right: 8px;
   height: 36px;
   min-width: 120px;
-  z-index: 60;
+  z-index: var(--z-panel, 100);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -272,7 +314,7 @@
   border: 1px solid var(--panel-border);
   border-radius: var(--panel-border-radius, 2px);
   box-shadow: 0 4px 16px rgba(0, 0, 0, 0.3);
-  z-index: 60;
+  z-index: 1;
 }
 
 .tile-layout-picker-item {
@@ -311,45 +353,44 @@
 }
 
 /* ===================================================================
-   Design Selector (devmode widget)
+   Narrow viewports (<= 700px, also reached at large browser zoom / font
+   sizes): every design lays out full width below the top toolbar. Inline
+   geometry is overridden, and move/resize handles are hidden so no panel
+   content can end up off-screen.
+   Keep the breakpoint in sync with NARROW_VIEWPORT_PX in geometry.ts.
    =================================================================== */
 
-.design-selector {
-  position: fixed;
-  bottom: 12px;
-  left: 12px;
-  z-index: 25;
-  display: flex;
-  gap: 4px;
-  padding: 4px;
-  border-radius: var(--panel-border-radius, 2px);
-  border: 1px solid var(--panel-border);
-  background: var(--panel-bg);
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
-  font-family: var(--code-font);
-}
+@media (max-width: 700px) {
+  .panel-chrome {
+    left: 0 !important;
+    right: 0 !important;
+    top: var(--top-toolbar-height, 0px) !important;
+    bottom: 0 !important;
+    width: auto !important;
+    height: auto !important;
+    max-height: none;
+    border-radius: 0;
+    border-left: none;
+    border-right: none;
+    transition: none;
+  }
 
-.design-selector button {
-  padding: 4px 10px;
-  border: 1px solid transparent;
-  border-radius: var(--item-border-radius, 1px);
-  background: transparent;
-  color: var(--text-secondary, rgba(255, 255, 255, 0.7));
-  font-size: 11px;
-  font-weight: 600;
-  text-transform: uppercase;
-  letter-spacing: 0.05em;
-  cursor: pointer;
-  transition: all 0.15s ease;
-}
+  .pane-resize-zone,
+  .pane-edge-expand-btn,
+  .drawer-resize-edge {
+    display: none;
+  }
 
-.design-selector button:hover {
-  background: var(--panel-item-hover-bg, rgba(255, 255, 255, 0.1));
-  color: var(--text-primary);
-}
+  .panel-chrome--pane .panel-chrome-title-bar,
+  .panel-chrome--pane .panel-chrome-title-bar:active {
+    cursor: default;
+  }
 
-.design-selector button.active {
-  background: var(--accent-color);
-  color: var(--panel-bg, #000);
-  border-color: var(--accent-color);
+  .panel-chrome-title-bar {
+    min-height: 40px;
+  }
+
+  .tile-layout-picker {
+    max-width: calc(100vw - 16px);
+  }
 }

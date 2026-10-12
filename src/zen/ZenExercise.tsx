@@ -32,6 +32,7 @@ import { createZenKeymapGuard } from "./zenKeymapGuard";
 import { subscribeZenAction } from "./zenActionBus";
 import type { ActionId } from "../lib/keybindings/actions";
 import ZenInputToggle from "./ZenInputToggle";
+import { dbg } from "../lib/debug";
 import {
   createDocumentSession,
   type DocumentSession,
@@ -126,7 +127,7 @@ const ZenExercise: Component = () => {
       editorView?.focus();
     });
 
-    console.log(`[zen] Exercise loaded: "${ex.title}" (${ex.id})`);
+    dbg("zen", `Exercise loaded: "${ex.title}" (${ex.id})`);
   }
 
   createEffect(
@@ -140,7 +141,7 @@ const ZenExercise: Component = () => {
 
   function handleCompletion() {
     const ex = activeExercise();
-    console.log(`[zen] Exercise complete: "${ex?.title}"`);
+    dbg("zen", `Exercise complete: "${ex?.title}"`);
     markCompleted();
     setGlowing(true);
     setShowDone(true);

@@ -2,6 +2,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("./noneModeGate.ts", () => ({
   evalRejectionForNoRuntime: () => null,
+  WASM_RUNTIME_NOT_READY_WARNING:
+    "WASM runtime not ready — eval was not delivered",
 }));
 vi.mock("../runtime/runtimeCompatibility.ts", () => ({
   shouldUseWasmShadow: () => true,
@@ -15,9 +17,29 @@ import { EditorView } from "@codemirror/view";
 
 const mockEvalCode = vi.hoisted(() => vi.fn(() => Promise.resolve("42")));
 const mockEvalCodeWithDiagnostics = vi.hoisted(() =>
-  vi.fn(() => Promise.resolve({ result: "42", diagnostics: [] })),
+  vi.fn((_code: string) => Promise.resolve({ result: "42", diagnostics: [] })),
 );
-const mockSendTouSEQ = vi.hoisted(() => vi.fn(() => Promise.resolve()));
+const mockSendTouSEQ = vi.hoisted(() => vi.fn((_code: string) => Promise.resolve()));
+const mockDispatchOverride = vi.hoisted(() => ({ next: null as unknown }));
+
+vi.mock("../runtime/runtimeCodeEvaluation.ts", () => ({
+  dispatchRuntimeCodeEvaluation: vi.fn(async ({ code, wasmCode, soft = false }) => {
+    if (mockDispatchOverride.next) {
+      const result = mockDispatchOverride.next;
+      mockDispatchOverride.next = null;
+      return result;
+    }
+    return {
+      session: { transportMode: soft ? "wasm" : "both" },
+      wasm: { status: "fulfilled", value: await mockEvalCodeWithDiagnostics(wasmCode ?? code) },
+      hardware: soft ? null : {
+        status: "fulfilled",
+        value: await mockSendTouSEQ(code),
+      },
+      diagnosticAuthority: soft ? "wasm" : "hardware",
+    };
+  }),
+}));
 const mockDetectAndTrack = vi.hoisted(() => vi.fn());
 const mockDispatchInlineResult = vi.hoisted(() => vi.fn());
 const mockMarkOutputRunning = vi.hoisted(() => vi.fn());
@@ -141,6 +163,19 @@ describe("soft eval routing in runtime mode 'both'", () => {
     evaluate(view, "soft");
     await vi.waitFor(() => expect(mockEvalCodeWithDiagnostics).toHaveBeenCalledOnce());
     expect(mockSendTouSEQ).not.toHaveBeenCalled();
+  });
+
+  it("shows failure feedback when WASM is unavailable", async () => {
+    mockDispatchOverride.next = {
+      session: { transportMode: "hardware" },
+      wasm: null,
+      hardware: null,
+      diagnosticAuthority: null,
+    };
+    evaluate(view, "soft");
+    await vi.waitFor(() => expect(mockDispatchInlineResult).toHaveBeenCalledOnce());
+    expect(mockDispatchInlineResult.mock.calls[0][1]).toMatch(/Soft eval unavailable/);
+    expect(mockDispatchInlineResult.mock.calls[0][3]).toBe(true);
   });
 });
 

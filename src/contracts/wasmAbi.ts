@@ -50,7 +50,8 @@ export const REQUIRED_WASM_EXPORTS = Object.freeze({
   },
   useq_eval: {
     symbol: "useq_eval",
-    returnType: "string",
+    // Returns an owned char*; callers decode it and release it with _free.
+    returnType: "number",
     argTypes: ["string"],
   },
   useq_update_time: {
@@ -135,19 +136,24 @@ export const OPTIONAL_WASM_EXPORTS = Object.freeze({
     returnType: "number",
     argTypes: ["string", "number", "number", "number", "number", "number", "number"],
   },
+  useq_projection_frontier_time: {
+    symbol: "useq_projection_frontier_time",
+    returnType: "number",
+    argTypes: [],
+  },
   useq_last_error: {
     symbol: "useq_last_error",
-    returnType: "string",
+    returnType: "number",
     argTypes: [],
   },
   useq_last_diagnostics: {
     symbol: "useq_last_diagnostics",
-    returnType: "string",
+    returnType: "number",
     argTypes: [],
   },
   useq_active_diagnostics: {
     symbol: "useq_active_diagnostics",
-    returnType: "string",
+    returnType: "number",
     argTypes: [],
   },
   useq_set_live_inputs: {
@@ -172,13 +178,28 @@ export const OPTIONAL_WASM_EXPORTS = Object.freeze({
   },
   useq_output_classifications: {
     symbol: "useq_output_classifications",
-    returnType: "string",
+    returnType: "number",
     argTypes: [],
   },
   useq_output_dependencies: {
     symbol: "useq_output_dependencies",
     returnType: "number",
     argTypes: ["number"],
+  },
+  useq_output_health: {
+    symbol: "useq_output_health",
+    returnType: "number",
+    argTypes: ["string"],
+  },
+  useq_output_semantic_effects: {
+    symbol: "useq_output_semantic_effects",
+    returnType: "number",
+    argTypes: ["number"],
+  },
+  useq_clear_synth_declarations: {
+    symbol: "useq_clear_synth_declarations",
+    returnType: "number",
+    argTypes: [],
   },
   useq_probe_set: {
     symbol: "useq_probe_set",
@@ -232,6 +253,12 @@ export const OPTIONAL_WASM_EXPORTS = Object.freeze({
     symbol: "useq_tick_synth_controls",
     returnType: "number",
     argTypes: ["number", "number", "number"],
+  },
+  /** Read-only row-major samples for selected synth controls at explicit times. */
+  useq_sample_synth_controls_into: {
+    symbol: "useq_sample_synth_controls_into",
+    returnType: "number",
+    argTypes: ["number", "number", "number", "number", "number"],
   },
 } as const satisfies Record<string, CwrapDescriptor>);
 

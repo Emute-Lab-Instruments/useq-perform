@@ -305,7 +305,7 @@ export const SEL = {
   playBtn: ".cm-expr-play-btn",
   playBtnOn: ".cm-expr-play-btn.is-visualising",
   railFailing: ".cm-expr-rail-failing",
-  connectButton: '#panel-toolbar button[aria-label="Connect (WASM)"]',
+  connectButton: '#panel-toolbar .connection-chip[data-connection-state="wasm"]',
   connectBadge: "#panel-toolbar .connect-badge",
   transportPlay: '#panel-top-toolbar button[aria-label="Play"]',
   transportPause: '#panel-top-toolbar button[aria-label="Pause"]',

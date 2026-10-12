@@ -17,9 +17,8 @@ import {
   type GamepadSnapshot,
 } from "./gamepadManager";
 import type { ActionId } from "../keybindings/actions";
-import type { MenuDispatcher } from "../menu/dispatcher";
+import type { MenuDispatcher } from "../menu/types";
 import * as ch from "../../contracts/gamepadChannels";
-import { isGrabActive } from "./grabState.ts";
 import { isMenuOpen } from "../menu/store.ts";
 
 import { diffSnapshots } from "./hardware";
@@ -27,7 +26,7 @@ import { step, flush, INITIAL_STATE, DEFAULT_TIMING, type RecognizerState, type 
 import { resolveGesture, resolveAxis, buildLayerMap } from "./resolver";
 import { createDispatcher, type Dispatcher } from "./dispatcher";
 import { radialLayer } from "./paradigms/radial";
-import { modalShiftLayers } from "./paradigms/modal-shift";
+import { modalShiftLayers, modalShiftTransientLayers } from "./paradigms/modal-shift";
 import type {
   AxisChannelName,
   AxisFrame,
@@ -75,6 +74,7 @@ export type GamepadPipelineOptions = {
 };
 
 export interface GamepadEditorContext {
+  readonly grabActive: boolean;
   readonly insertionMode: boolean;
   readonly cursorOnLeafAtom: boolean;
   readonly cursorNodeKind: string | null;
@@ -102,7 +102,7 @@ function createActionRunner(
     onAction?.(action);
 
     // Route menu.* actions to the menu dispatcher if available.
-    if (menuDispatcher && action.startsWith("menu.")) {
+    if (menuDispatcher && (action.startsWith("menu.") || action === "actOn.quickReplace" || action === "actOn.replace" || action === "actOn.wrapWith")) {
       menuDispatcher.handleAction(action);
       return;
     }
@@ -133,7 +133,7 @@ export function createGamepadPipeline(
     radialLayer,
     ...modalShiftLayers,
   ];
-  const allTransientLayers: readonly Layer[] = options.transientLayers ?? [];
+  const allTransientLayers: readonly Layer[] = options.transientLayers ?? modalShiftTransientLayers;
   const allLayers = [...predicateLayers, ...allTransientLayers];
   const layerMap = buildLayerMap(allLayers);
 
@@ -182,6 +182,7 @@ export function createGamepadPipeline(
       ? options.readEditorContext(editor)
       : {
           insertionMode: false,
+          grabActive: false,
           cursorOnLeafAtom: false,
           cursorNodeKind: null,
         };
@@ -189,7 +190,6 @@ export function createGamepadPipeline(
     return {
       gamepad: getState(),
       ...editorContext,
-      grabActive: isGrabActive(),
     };
   }
 
@@ -235,11 +235,14 @@ export function createGamepadPipeline(
         entry,
         ...gamepadState.transientLayers,
       ];
+      if (entry.name === ("act-on" as LayerName)) editor?.dom.classList.add("useq-act-on");
     },
     onLayerPop: (name: LayerName) => {
       gamepadState.transientLayers =
         gamepadState.transientLayers.filter((t) => t.name !== name);
+      if (name === ("act-on" as LayerName)) editor?.dom.classList.remove("useq-act-on");
     },
+    getLayerTtlMs: (name: LayerName) => layerMap.get(name)?.ttlMs,
     onNoopFlash: () => {
       // TODO: visual feedback for unmatched gestures
     },

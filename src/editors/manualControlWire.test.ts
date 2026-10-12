@@ -28,7 +28,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { EditorState } from "@codemirror/state";
 import { EditorView } from "@codemirror/view";
-// @ts-expect-error — no type declarations for clojure-mode
+
 import { default_extensions } from "@nextjournal/clojure-mode";
 import { executeEditorCommand } from "./commands/editorCommandRouter.ts";
 import { clearManualControlBinding } from "../lib/manualControlState.ts";
@@ -38,15 +38,15 @@ import {
 } from "../lib/liveSlotIndex.ts";
 import type { BinaryInputSetEntry } from "../transport/json-protocol.ts";
 
-const sendSetLiveInputsMock = vi.fn(() => Promise.resolve());
-const sendBinaryInputSetMock = vi.fn(() => Promise.resolve());
+const sendSetLiveInputsMock = vi.fn(async (_values: Record<string, number>) => {});
+const sendBinaryInputSetMock = vi.fn(async (_entries: BinaryInputSetEntry[]) => {});
 
 vi.mock("../transport/json-protocol.ts", async (importOriginal) => {
   const actual = await importOriginal<Record<string, unknown>>();
   return {
     ...actual,
-    sendSetLiveInputs: (...args: unknown[]) => sendSetLiveInputsMock(...args),
-    sendBinaryInputSet: (...args: unknown[]) => sendBinaryInputSetMock(...args),
+    sendSetLiveInputs: (values: Record<string, number>) => sendSetLiveInputsMock(values),
+    sendBinaryInputSet: (entries: BinaryInputSetEntry[]) => sendBinaryInputSetMock(entries),
   };
 });
 

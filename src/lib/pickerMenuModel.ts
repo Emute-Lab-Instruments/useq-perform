@@ -1,5 +1,15 @@
 import { loadReferenceDataFromCandidates } from "./referenceDataLoader.ts";
 import { load, PERSISTENCE_KEYS } from "./persistence.ts";
+import { namespaceChoices, type NamespaceChoice } from "./operatorNamespaces.ts";
+import type { NamespaceDefinition, ReferenceEntry } from "../utils/referenceStore.ts";
+
+export function buildNamespacePickerItems(
+  symbol: string,
+  entry: ReferenceEntry,
+  definitions: ReadonlyArray<NamespaceDefinition>,
+): NamespaceChoice[] {
+  return namespaceChoices(symbol, entry, definitions);
+}
 
 interface ReferenceFunction {
   name: string;

@@ -63,12 +63,4 @@ export const simplifiedBindings: KeyBinding[] = [
   // -- Navigation -----------------------------------------------------------
   { action: "nav.home", key: "Home" },
   { action: "nav.end", key: "End" },
-
-  // -- Picker menu (scoped to picker open) ----------------------------------
-  { action: "picker.up", key: "ArrowUp", when: "picker.open" },
-  { action: "picker.down", key: "ArrowDown", when: "picker.open" },
-  { action: "picker.left", key: "ArrowLeft", when: "picker.open" },
-  { action: "picker.right", key: "ArrowRight", when: "picker.open" },
-  { action: "picker.select", key: "Enter", when: "picker.open" },
-  { action: "picker.cancel", key: "Escape", when: "picker.open" },
 ];

@@ -87,8 +87,12 @@ text the performer sees.
 authoritative text after each CodeMirror transaction; the structural tree,
 Metas, cursors, ranges, gutters, and decorations are then derived or remapped
 from that transaction. Structural operations may plan against the derived tree,
-but they take effect only by committing a CodeMirror text transaction; they do
-not retain a separately editable AST.
+but they take effect only through the shared structural commit function in
+`src/editors/extensions/structure/adapter/applyOp.ts`. The CodeMirror mutation
+transaction carries both text changes and intended structural focus; undo
+restores the corresponding focus with the text. Keyboard, gamepad, and radial
+menu mutations use this same commit path, without retaining a separately
+editable AST.
 &nbsp;&nbsp;&nbsp;&nbsp;**Why:** the tree remains useful for safe structural commands
 without creating AST authority or a text/tree synchronisation protocol.
 
@@ -147,3 +151,12 @@ program ownership with the secondary session.
 &nbsp;&nbsp;&nbsp;&nbsp;**Why:** previews and playgrounds must be safe to discard and
 must not mutate the performer's durable program by mounting, evaluating, or
 unmounting.
+
+2.8 **`.useq` file import and export.** An imported file must decode to a JSON
+object with a string `text` property. `format_version` may be absent for legacy
+files or exactly the number `1`; invalid files are rejected before replacing
+any document text. Export writes `{ text, format_version: 1 }`. File helpers
+receive an explicit editor target and retain that target throughout asynchronous
+picker operations. (See `src/effects/editor.ts`.)
+&nbsp;&nbsp;&nbsp;&nbsp;**Why:** malformed files must not erase the document, and a
+change of active editor while a picker is open must not redirect the operation.

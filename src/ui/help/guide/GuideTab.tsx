@@ -54,7 +54,7 @@ const DOMAIN_LABELS: Record<GuideDomain, string> = {
 
 export const GuideTab: Component = () => {
   // -- TOC collapse state --
-  const [tocExpanded, setTocExpanded] = createSignal(true);
+  const [tocExpanded, setTocExpanded] = createSignal(false);
 
   // -- Dismissed sections --
   const [dismissed, setDismissed] = createSignal<Set<string>>(new Set());
@@ -159,7 +159,8 @@ export const GuideTab: Component = () => {
     onCleanup(() => observer.disconnect());
   });
 
-  function scrollToSection(sectionId: string) {
+  function scrollToSection(sectionId: string, focusTarget = false) {
+    setTocExpanded(false);
     const el = document.getElementById(`guide-section-${sectionId}`);
     if (el) {
       el.scrollIntoView({ behavior: "smooth", block: "start" });
@@ -169,6 +170,9 @@ export const GuideTab: Component = () => {
         next.add(sectionId);
         return next;
       });
+      if (focusTarget) {
+        el.querySelector<HTMLElement>(".guide-section-header")?.focus({ preventScroll: true });
+      }
     }
   }
 
@@ -191,9 +195,13 @@ export const GuideTab: Component = () => {
     <div class="guide-tab" ref={scrollRef}>
       {/* ---- Sticky TOC ---- */}
       <div class="guide-toc" classList={{ "guide-toc--expanded": tocExpanded() }}>
-        <button class="guide-toc-toggle" onClick={() => setTocExpanded((p) => !p)}>
+        <button
+          class="guide-toc-toggle"
+          aria-expanded={tocExpanded()}
+          onClick={() => setTocExpanded((p) => !p)}
+        >
           <span>Contents</span>
-          <span>{tocExpanded() ? "\u25BC" : "\u25B6"}</span>
+          <span aria-hidden="true">{tocExpanded() ? "\u25BC" : "\u25B6"}</span>
         </button>
         <ul class="guide-toc-list">
           <For each={tocEntries()}>
@@ -203,15 +211,17 @@ export const GuideTab: Component = () => {
                 <li
                   class="guide-toc-entry"
                   classList={{ "guide-toc-entry--dismissed": isDismissed() }}
-                  onClick={() => scrollToSection(section.id)}
                 >
-                  <span>{section.title}</span>
+                  <button class="guide-toc-link" onClick={() => scrollToSection(section.id, true)}>
+                    {section.title}
+                  </button>
                   <Show
                     when={!isDismissed()}
                     fallback={null}
                   >
                     <button
                       class="guide-toc-dismiss-btn"
+                      aria-label={`Mark ${section.title} as read`}
                       onClick={(e) => {
                         e.stopPropagation();
                         dismiss(section.id);

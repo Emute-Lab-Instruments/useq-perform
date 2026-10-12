@@ -31,7 +31,7 @@ import {
   type EditorCommandSource,
 } from "../../commands/editorCommandRouter.ts";
 import { inferRange } from "./rangeInference.ts";
-import { liveEditPersistence, liveEditOnValueChange, liveEditStore } from "../../../effects/liveEditRuntime.ts";
+import { liveEditPersistence, liveEditStore } from "../../../effects/liveEditRuntime.ts";
 import type { LiveEditSlot } from "../../../contracts/liveEdit.ts";
 import { evaluate } from "../../../effects/editorEvaluation.ts";
 import { createVectorMarkController, type VectorMarkController } from "./vectorMarkController.ts";

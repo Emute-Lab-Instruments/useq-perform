@@ -201,6 +201,17 @@ describe("printNode (flat printer)", () => {
   });
 });
 
+describe("namespace spelling normalization", () => {
+  it("preserves long spelling when formatting is off", () => {
+    expect(printNode(sym("uni/sin"))).toBe("uni/sin");
+  });
+
+  it("canonicalises long spelling during a formatter pass", () => {
+    expect(formatNode(list([sym("uni/sin"), sym("once/random")]), fmt()))
+      .toBe("(u/sin k/random)");
+  });
+});
+
 // ─── 2. Single-line forms that stay single-line ─────────────────────────────
 
 describe("formatNode: single-line forms", () => {

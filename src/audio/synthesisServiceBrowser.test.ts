@@ -105,7 +105,7 @@ function installBrowserStubs(opts: { addModuleResult: "ok" | "throw" } = { addMo
 
   // jsdom does not implement fetch by default. Stub a minimal fetch that
   // returns a tiny WASM byte sequence; the loader will compile it.
-  (window as unknown as { fetch: unknown }).fetch = vi.fn(async (url: string) => {
+  (window as unknown as { fetch: unknown }).fetch = vi.fn(async () => {
     // Hand-craft a minimal valid WASM module (8 bytes magic + version).
     // The compile call below will succeed; the registry JSON path falls
     // back to the editor descriptor because the test bytes have no
@@ -249,7 +249,7 @@ describe("synthesisServiceBrowser — AudioWorkletNode context identity (VAL-CRO
     const audioContexts: unknown[] = [];
 
     class StrictAudioContext {
-      state = "suspended" as const;
+      state: AudioContextState = "suspended";
       sampleRate = 48000;
       currentTime = 0;
       destination = { name: "strict-destination" };

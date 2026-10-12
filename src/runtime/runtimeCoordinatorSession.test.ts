@@ -5,8 +5,12 @@ import {
   resetRuntimeSessionState,
   subscribeRuntimeSessionState,
   teardownRuntimeSessionState,
-  updateRuntimeSessionState,
+  transitionRuntimeCoordinator,
 } from "./runtimeCoordinator";
+import type { RuntimeCoordinatorTransition } from "./runtimeCoordinator";
+
+const setSession = (updates: Extract<RuntimeCoordinatorTransition, { type: "session" }>['updates']) =>
+  transitionRuntimeCoordinator({ type: "session", updates });
 
 afterEach(() => {
   teardownRuntimeSessionState();
@@ -31,14 +35,14 @@ describe("runtimeCoordinator session state", () => {
   });
 
   it("updates state and returns a snapshot", () => {
-    const result = updateRuntimeSessionState({ connected: true });
+    const result = setSession({ connected: true });
     expect(result.connected).toBe(true);
     expect(getRuntimeSessionState().connected).toBe(true);
   });
 
   it("merges partial updates without clobbering other fields", () => {
-    updateRuntimeSessionState({ connected: true, protocolMode: "json" });
-    updateRuntimeSessionState({ connected: false });
+    setSession({ connected: true, protocolMode: "json" });
+    setSession({ connected: false });
     const state = getRuntimeSessionState();
     expect(state.connected).toBe(false);
     expect(state.protocolMode).toBe("json");
@@ -46,7 +50,7 @@ describe("runtimeCoordinator session state", () => {
 
   it("resetRuntimeSessionState restores defaults and notifies", () => {
     const listener = vi.fn();
-    updateRuntimeSessionState({ connected: true, protocolMode: "json" });
+    setSession({ connected: true, protocolMode: "json" });
     subscribeRuntimeSessionState(listener);
     resetRuntimeSessionState();
     const state = getRuntimeSessionState();
@@ -60,14 +64,14 @@ describe("runtimeCoordinator session state", () => {
   it("notifies listeners on update", () => {
     const listener = vi.fn();
     subscribeRuntimeSessionState(listener);
-    updateRuntimeSessionState({ connected: true });
+    setSession({ connected: true });
     expect(listener).toHaveBeenCalledOnce();
     expect(listener.mock.calls[0][0].connected).toBe(true);
   });
 
   it("notifies listeners on reset", () => {
     const listener = vi.fn();
-    updateRuntimeSessionState({ connected: true });
+    setSession({ connected: true });
     subscribeRuntimeSessionState(listener);
     resetRuntimeSessionState();
     expect(listener).toHaveBeenCalledOnce();
@@ -78,7 +82,7 @@ describe("runtimeCoordinator session state", () => {
     const listener = vi.fn();
     const unsub = subscribeRuntimeSessionState(listener);
     unsub();
-    updateRuntimeSessionState({ connected: true });
+    setSession({ connected: true });
     expect(listener).not.toHaveBeenCalled();
   });
 
@@ -86,7 +90,7 @@ describe("runtimeCoordinator session state", () => {
     const snapshots: unknown[] = [];
     subscribeRuntimeSessionState((s) => snapshots.push(s));
     subscribeRuntimeSessionState((s) => snapshots.push(s));
-    updateRuntimeSessionState({ connected: true });
+    setSession({ connected: true });
     expect(snapshots).toHaveLength(2);
     // same values, but same snapshot reference (frozen before iteration)
     expect(snapshots[0]).toEqual(snapshots[1]);
@@ -112,14 +116,14 @@ describe("runtimeCoordinator session state", () => {
       order.push("C");
     });
 
-    updateRuntimeSessionState({ connected: true });
+    setSession({ connected: true });
 
     // B was unsubscribed by A, so B should NOT fire (guard checks listeners.has)
     expect(order).toEqual(["A", "C"]);
 
     // B stays unsubscribed on subsequent updates
     order.length = 0;
-    updateRuntimeSessionState({ connected: false });
+    setSession({ connected: false });
     expect(order).toEqual(["A", "C"]);
   });
 
@@ -134,29 +138,29 @@ describe("runtimeCoordinator session state", () => {
 
     subscribeRuntimeSessionState(() => order.push("other"));
 
-    updateRuntimeSessionState({ connected: true });
+    setSession({ connected: true });
     expect(order).toEqual(["self", "other"]);
 
     // self-unsubscribed, only "other" fires next time
     order.length = 0;
-    updateRuntimeSessionState({ connected: false });
+    setSession({ connected: false });
     expect(order).toEqual(["other"]);
   });
 
   // ── re-entrant updates ──────────────────────────────────────────
 
-  it("re-entrant updateRuntimeSessionState inside a listener does not cause infinite loops", () => {
+  it("re-entrant session transition inside a listener does not cause infinite loops", () => {
     let calls = 0;
 
     subscribeRuntimeSessionState((state) => {
       calls++;
       // Only re-enter once to avoid infinite loop
       if (state.connected && !state.session.hasHardwareConnection) {
-        updateRuntimeSessionState({ hasHardwareConnection: true });
+        setSession({ hasHardwareConnection: true });
       }
     });
 
-    updateRuntimeSessionState({ connected: true });
+    setSession({ connected: true });
 
     // First call triggers the listener, which re-enters with hasHardwareConnection.
     // The re-entrant call triggers a second notification round.
@@ -174,7 +178,7 @@ describe("runtimeCoordinator session state", () => {
     // First listener re-enters
     subscribeRuntimeSessionState((state) => {
       if (state.connected && !state.session.hasHardwareConnection) {
-        updateRuntimeSessionState({ hasHardwareConnection: true });
+        setSession({ hasHardwareConnection: true });
       }
     });
 
@@ -183,7 +187,7 @@ describe("runtimeCoordinator session state", () => {
       observedHardware.push(state.session.hasHardwareConnection);
     });
 
-    updateRuntimeSessionState({ connected: true });
+    setSession({ connected: true });
 
     // With SolidJS reactive batching, effects see the final state after
     // all synchronous mutations resolve. The re-entrant update is visible
@@ -199,12 +203,12 @@ describe("runtimeCoordinator session state", () => {
     const unsubA = subscribeRuntimeSessionState(a);
     subscribeRuntimeSessionState(b);
 
-    updateRuntimeSessionState({ connected: true });
+    setSession({ connected: true });
     expect(a).toHaveBeenCalledOnce();
     expect(b).toHaveBeenCalledOnce();
 
     unsubA();
-    updateRuntimeSessionState({ connected: false });
+    setSession({ connected: false });
     expect(a).toHaveBeenCalledOnce(); // no second call
     expect(b).toHaveBeenCalledTimes(2);
   });
@@ -214,7 +218,7 @@ describe("runtimeCoordinator session state", () => {
     const unsub = subscribeRuntimeSessionState(listener);
     unsub();
     unsub(); // should not throw
-    updateRuntimeSessionState({ connected: true });
+    setSession({ connected: true });
     expect(listener).not.toHaveBeenCalled();
   });
 });

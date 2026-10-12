@@ -28,7 +28,8 @@ layer: behavioural
 - `useq:zen:progress` (zen-mode lesson progress — see [zen-mode.md §8.1](zen-mode.md))
 - `uSEQ-Perform-Editor-Probes` (probe state)
 - `uSEQ-Perform-Editor-LiveEdits` (live-edit values, orphan state, MIDI bindings, panel state)
-- `uSEQ-Perform-DevMode-State` (devmode toggle)
+- `uSEQ-Perform-Console-Layout` (console panel size, position, collapsed state, filter toggles — see [console.md §1.10](console.md))
+- `uSEQ-Perform-Panel-Geometry` (panel chrome geometry per design and per panel: pane x/y/w/h, drawer width %, tile slot; clamped to the viewport on restore — see [settings.md §1.8.2](settings.md))
 
 1.3.1 `uSEQ-Perform-Editor-Identity` is a legacy state-identity migration input,
 not a live sidecar. It remains readable alongside `uSEQ-Perform-User-Code` until
@@ -41,6 +42,8 @@ the successful atomic migration defined by §2.4.
 1.6 **Schema versioning is implicit by default.** Normalisation reads the persisted JSON and fills in missing fields from defaults; unknown fields are dropped. Most persisted shapes do not carry a version key. Feature-local persisted records may include an explicit `schemaVersion` only when they need non-trivial migration that cannot be represented by total normalisation alone; [live-edit.md §7](live-edit.md) is the current example.
 
 1.7 `?nosave` is a **session-scoped write gate**: every write through the persistence service becomes a silent no-op, but reads still return pre-existing persisted state. (see `src/lib/persistence.ts`) The app starts with whatever was previously saved but never writes back. Modules that use other persistence channels (e.g. IndexedDB, cookies) must respect the same flag.
+
+1.7.1 Settings loaded from `?config` are session-only overrides and are never implicitly persisted. An explicit settings edit persists only the edited patch, merged over the previously stored settings, so unrelated URL-provided values do not become durable. `?nosave` still suppresses that explicit write.
 
 1.8 **Downgrade is unsupported.** Only forward migration (older persisted data → newer app version) is a supported path. An older app version encountering unknown fields from a newer version may drop them; this is acceptable.
 

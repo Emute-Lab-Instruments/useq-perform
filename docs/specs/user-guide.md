@@ -58,7 +58,7 @@ Every algebraic concept is immediately connected to a physical patching scenario
 
 ### 8. Show all arities
 
-Many ModuLisp functions accept optional arguments (`euclid` with/without offset and pulse width, `tri` with/without duty, `random` with/without range). The guide should introduce the simplest arity first, then show the extended forms as a natural "and you can also..." progression. This prevents users from getting stuck using only the basic form when a convenient shortcut exists.
+Many ModuLisp functions accept optional arguments (`euclid` with/without pulse width and rotation, `tri` with/without duty, `random` with/without range). The guide should introduce the simplest arity first, then show the extended forms as a natural "and you can also..." progression. This prevents users from getting stuck using only the basic form when a convenient shortcut exists.
 
 ---
 
@@ -267,7 +267,7 @@ This is the conceptual heart of the guide. Each section follows the pattern: ana
 4.1 **Euclidean Rhythms**
 - `euclid` distributes K hits evenly across N steps
 - Basic: `(euclid 3 8 bar)` — 3 hits in 8 steps
-- With offset and pulse width: `(euclid 3 8 2 0.3 bar)` — offset by 2 steps, 30% pulse width
+- With pulse width and rotation: `(euclid 3 8 0.3 2 bar)` — 30% pulse width, rotated by 2 steps
 - Playground: `(euclid 3 8 bar)`, `(euclid 5 8 bar)`, `(euclid 7 16 bar)`
 - Classic patterns: 3/8, 5/8, 7/16
 - Show how offset creates canons from the same euclidean pattern
@@ -511,7 +511,10 @@ GuideTab                    (replaces LessonsTab + UserGuideTab)
 
 ### TOC Interaction
 
-The table of contents is always visible (sticky at the top of the guide scroll area). Each entry has:
+The Contents control remains visible (sticky at the top of the guide scroll area).
+Its list starts collapsed; when expanded, it has a bounded scrollable height so it
+cannot cover the entire panel. Selecting an entry closes the list and opens the
+target section. Entries are keyboard-accessible buttons. Each entry has:
 - **Click** → smooth-scroll to the section
 - **Hover** → shows a small dismiss/mark-done icon
 - **Click dismiss icon** → section entry greys out and moves toward the bottom of the TOC

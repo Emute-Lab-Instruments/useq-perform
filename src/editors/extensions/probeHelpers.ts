@@ -76,7 +76,9 @@ export function getListChildren(node: SyntaxNode | null): SyntaxNode[] {
       child.type.name === "[" ||
       child.type.name === "]" ||
       child.type.name === "{" ||
-      child.type.name === "}"
+      child.type.name === "}" ||
+      child.type.name === "LineComment" ||
+      child.type.name === "BlockComment"
     ) {
       continue;
     }
@@ -147,7 +149,7 @@ function computeTemporalScale(
   let multiplier = 1;
   for (let index = 0; index < appliedDepth && index < wrappers.length; index++) {
     const wrapper = wrappers[index];
-    const factor = Number.parseFloat(wrapper.beforeArgs[0] ?? "");
+    const factor = Number(wrapper.beforeArgs[0]);
     if (!Number.isFinite(factor) || factor <= 0) continue;
     if (wrapper.operatorName === "slow") {
       multiplier *= factor;
@@ -288,7 +290,14 @@ function toIndexedFormTarget(
   const phasorRange = readTrimmedRange(children[2], state);
   if (!listRange || !phasorRange) return null;
 
-  const elementRanges = getListChildren(listArg)
+  // Only literal elements have a direct source position. A computed collection
+  // (reverse, concat, etc.) cannot be mapped by treating its operator as data.
+  const elements = getListChildren(listArg);
+  if (listArg.type.name === "List") {
+    if (getOperatorName(listArg, state) !== "list") return null;
+    elements.shift();
+  }
+  const elementRanges = elements
     .map((child) => readTrimmedRange(child, state))
     .filter((range): range is ProbeRange => Boolean(range));
 
@@ -340,7 +349,7 @@ export function collectVisibleIndexedForms(
   }
 
   visit(tree.topNode);
-  results.sort((left, right) => left.formRange.from - right.formRange.to);
+  results.sort((left, right) => left.formRange.from - right.formRange.from);
   return results;
 }
 

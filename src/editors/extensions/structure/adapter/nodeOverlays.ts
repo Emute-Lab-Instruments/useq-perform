@@ -1,3 +1,4 @@
+import { isGrabActive } from "../../../grabSession.ts";
 /**
  * SVG overlay for the structural-cursor visual.
  *
@@ -44,7 +45,7 @@ import {
   type Node,
   type NodeId,
 } from "../core/index.ts";
-import { grabModeField, insertionModeField, structField } from "./stateField.ts";
+import { insertionModeField, structField } from "./stateField.ts";
 import type { IdIndex, SourceRange } from "./treeFromLezer.ts";
 
 // ─── Debug logging ───────────────────────────────────────────────────────────
@@ -405,6 +406,7 @@ class StructuralNodeOverlayPlugin {
   constructor(view: EditorView) {
     this.view = view;
     this.svgOverlay = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+    this.svgOverlay.classList.add('useq-structural-node-overlay');
     // Size is set explicitly each render to match scrollDOM's full scrollable
     // content area (not just the visible viewport): polygons are positioned in
     // doc-space, so the SVG must cover doc-space [0, scrollHeight] or anything
@@ -427,8 +429,8 @@ class StructuralNodeOverlayPlugin {
     this.view = u.view;
     const oldField = u.startState.field(structField, false);
     const newField = u.state.field(structField, false);
-    const oldGrab = u.startState.field(grabModeField, false);
-    const newGrab = u.state.field(grabModeField, false);
+    const oldGrab = isGrabActive(u.startState);
+    const newGrab = isGrabActive(u.state);
     const oldInsert = u.startState.field(insertionModeField, false);
     const newInsert = u.state.field(insertionModeField, false);
     if (
@@ -630,7 +632,7 @@ class StructuralNodeOverlayPlugin {
           fade:
             (view.state.field(insertionModeField, false) ?? false) ||
             fadeProvider(),
-          grabbed: view.state.field(grabModeField, false) ?? false,
+          grabbed: isGrabActive(view.state),
         };
       },
       write(measure: NodeOverlayMeasure) {
@@ -829,4 +831,9 @@ export const _internalsForTests = {
  * currently empty — it exists so the bundle can stay symmetrical with the
  * hole-pill `holePillTheme` and so future stages have a hook for tunable CSS.
  */
-export const structuralNodeOverlayTheme = EditorView.baseTheme({});
+export const structuralNodeOverlayTheme = EditorView.baseTheme({
+  ".cm-editor.useq-act-on .useq-structural-node-overlay path": {
+    "stroke-width": "4px !important",
+    filter: "drop-shadow(0 0 3px currentColor)",
+  },
+});

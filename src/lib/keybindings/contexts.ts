@@ -200,7 +200,6 @@ function parseTerms(
  *   "vis.visible"          — visualisation module
  *   "probe.active"         — probe extension module
  *   "modal.open"           — modal/overlay manager
- *   "picker.open"          — picker menu module
  *   "eval.available"       — runtime/transport
  *   "gamepad.navMode"      — gamepad manager
  *   "gamepad.connected"    — gamepad manager

@@ -30,20 +30,25 @@ type Story = StoryObj<typeof MainToolbar>;
 
 export const Disconnected: Story = {
   args: { connectionState: 'none' },
-  parameters: { docs: { description: { story: 'Main toolbar when fully disconnected. Connect button shows gray transport-none styling. No hardware or WASM connection active.' } } },
+  parameters: { docs: { description: { story: 'Main toolbar when fully disconnected. The connection chip reads "Offline" in the error status colour; no hardware or WASM runtime is active.' } } },
 };
 
 export const WasmOnly: Story = {
   args: { connectionState: 'wasm' },
-  parameters: { docs: { description: { story: 'Main toolbar when running in browser-local mode with WASM interpreter only, no hardware connected. Connect button shows cyan transport-wasm styling.' } } },
+  parameters: { docs: { description: { story: 'Browser-local WASM interpreter only, no hardware connected. The connection chip reads "Virtual uSEQ".' } } },
 };
 
 export const ConnectedHardware: Story = {
   args: { connectionState: 'hardware' },
-  parameters: { docs: { description: { story: 'Main toolbar when connected to hardware via serial. Connect button shows blue transport-hardware styling with active cable icon.' } } },
+  parameters: { docs: { description: { story: 'Connected to hardware via serial with WASM disabled. The connection chip reads "uSEQ hardware".' } } },
+};
+
+export const WithShortcuts: Story = {
+  args: { connectionState: 'wasm', shortcuts: { graph: 'Alt+G', help: 'Alt+/' } },
+  parameters: { docs: { description: { story: 'Tooltips append the live keybinding for actions that have one (hover Graph or Help).' } } },
 };
 
 export const HardwareWithWasmShadow: Story = {
   args: { connectionState: 'both' },
-  parameters: { docs: { description: { story: 'Hardware-authoritative output with the Worker WASM visualisation shadow active. The distinct HW+W badge makes the simultaneous asymmetric mode explicit.' } } },
+  parameters: { docs: { description: { story: 'Hardware-authoritative output with the Worker WASM visualisation shadow active. The chip reads "Hardware + virtual" and its dot gains a second ring.' } } },
 };

@@ -25,7 +25,7 @@ import type { StateSnapshot } from "../contracts/runtimeTypes.ts";
 // so mocking get-state alone drives the whole re-sync through real map code.
 let connected = true;
 let jsonActive = true;
-const sendGetStateMock = vi.fn<[], Promise<{ success: boolean; state: StateSnapshot }>>();
+const sendGetStateMock = vi.fn<() => Promise<{ success: boolean; state: StateSnapshot }>>();
 
 vi.mock("../transport/index.ts", async (importOriginal) => {
   const actual = await importOriginal<Record<string, unknown>>();

@@ -1,15 +1,11 @@
 import { ReadableStream, WritableStream } from "node:stream/web";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import {
-  JSON_META_EVENT,
-  PROTOCOL_READY_EVENT,
-} from "../contracts/runtimeChannels";
 
 const postMock = vi.fn();
 const upgradeCheckMock = vi.fn();
 const notifyExternalTimeUpdateMock = vi.fn();
-const reportTransportConnectionChangedMock = vi.fn(() => ({
+const reportTransportConnectionChangedMock = vi.fn((_detail: { connected: boolean; protocolMode?: string }) => ({
   connected: false,
   protocolMode: "legacy",
   session: {
@@ -282,11 +278,11 @@ describe("serialComms fake host harness", () => {
   it("proves connect -> hello -> stream-config -> meta/time routing -> disconnect", async () => {
     const { channels, ...serialComms } = await loadSerialComms();
     const port = new FakeSerialPort();
-    const protocolEvents: Array<Record<string, unknown>> = [];
+    const protocolEvents: Array<import("../contracts/runtimeChannels").ProtocolReadyDetail> = [];
     const metaEvents: Array<Record<string, unknown>> = [];
 
     channels.protocolReady.subscribe((detail) => {
-      protocolEvents.push(detail as Record<string, unknown>);
+      protocolEvents.push(detail);
     });
     channels.jsonMeta.subscribe((detail) => {
       metaEvents.push(detail as Record<string, unknown>);
@@ -343,6 +339,43 @@ describe("serialComms fake host harness", () => {
     );
   });
 
+  it("routes STREAM frames for input channels to hwInputStream after the handshake", async () => {
+    const { channels: _channels, ...serialComms } = await loadSerialComms();
+    // Same module registry instance the connector/json-protocol just loaded.
+    const streamParser = await import("./stream-parser.ts");
+    const hwChannels = await import("../contracts/hardwareChannels");
+    const port = new FakeSerialPort();
+    const hwInputEvents: Array<
+      import("../contracts/hardwareChannels").HwInputStreamValue
+    > = [];
+
+    hwChannels.hwInputStream.subscribe((value) => {
+      hwInputEvents.push(value);
+    });
+
+    const connectPromise = serialComms.connectToSerialPort(
+      port as unknown as SerialPort
+    );
+    await vi.advanceTimersByTimeAsync(3500);
+    expect(await connectPromise).toBe(true);
+    await flushProtocolWork();
+
+    // The fake hello config subscribes inputs first (ssin1), so the device
+    // numbers it as wire channel 2 → WASM hw_input 8 (state-sync.md §1.2).
+    expect(streamParser.serialInputHwRouting).toEqual({ 2: 8 });
+
+    port.enqueueStream(2, 0.75);
+    // Wire channel 3 is an output (s1): must go to serialBuffers, not hwInputStream.
+    port.enqueueStream(3, 5);
+    await flushProtocolWork();
+
+    expect(hwInputEvents).toEqual([{ hwInputIndex: 8, value: 0.75 }]);
+
+    // Disconnect resets input routing together with output routing.
+    await serialComms.disconnect();
+    expect(streamParser.serialInputHwRouting).toEqual({});
+  });
+
   it("surfaces request timeouts on the fake serial harness", async () => {
     const serialComms = await loadSerialComms();
     const port = new FakeSerialPort();
@@ -378,20 +411,23 @@ describe("serialComms fake host harness", () => {
   it("reports error and stays in negotiating state when all hello retries time out", async () => {
     // Under the compatibility spec, one 700 ms legacy-safe probe precedes
     // three hello attempts at 700 ms each. If none succeed, the editor posts an error and stays
-    // in the pre-JSON mode (getProtocolMode returns "legacy" for any non-JSON state).
+    // in the explicit negotiation state, not mislabeled as legacy.
     const { channels, ...serialComms } = await loadSerialComms();
     const port = new FakeSerialPort();
     port.disableResponses.add("hello");
 
-    const protocolEvents: Array<Record<string, unknown>> = [];
+    const protocolEvents: Array<import("../contracts/runtimeChannels").ProtocolReadyDetail> = [];
     channels.protocolReady.subscribe((detail) => {
-      protocolEvents.push(detail as Record<string, unknown>);
+      protocolEvents.push(detail);
     });
 
     // Don't await the connect promise yet — protocol detection takes 2800 ms.
     const connectPromise = serialComms.connectToSerialPort(
       port as unknown as SerialPort
     );
+
+    await flushProtocolWork();
+    expect(serialComms.getProtocolMode()).toBe("negotiating");
 
     // Advance past the full probe/retry budget.
     await vi.advanceTimersByTimeAsync(3000);
@@ -400,8 +436,8 @@ describe("serialComms fake host harness", () => {
     // Now the connect promise should have resolved.
     expect(await connectPromise).toBe(true);
 
-    expect(serialComms.getProtocolMode()).toBe("legacy");
-    expect(protocolEvents.some((e) => e.protocolMode === "legacy")).toBe(true);
+    expect(serialComms.getProtocolMode()).toBe("negotiating");
+    expect(protocolEvents.some((e) => e.protocolMode === "negotiating")).toBe(true);
     // An error should have been posted to the console.
     expect(postMock).toHaveBeenCalledWith(
       expect.stringContaining("did not respond to hello"),
@@ -417,9 +453,9 @@ describe("serialComms fake host harness", () => {
     port.disableResponses.add("hello");
     port.legacyFirmwareVersion = "1.1.1";
 
-    const protocolEvents: Array<Record<string, unknown>> = [];
+    const protocolEvents: Array<import("../contracts/runtimeChannels").ProtocolReadyDetail> = [];
     channels.protocolReady.subscribe((detail) => {
-      protocolEvents.push(detail as Record<string, unknown>);
+      protocolEvents.push(detail);
     });
 
     expect(await serialComms.connectToSerialPort(port as unknown as SerialPort)).toBe(true);

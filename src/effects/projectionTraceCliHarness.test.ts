@@ -109,6 +109,8 @@ describe.skipIf(process.env.PROJECTION_TRACE_CLI !== "1")(
     const settings = {
       showFutureProjection: true,
       windowDuration: 10,
+      historyHeadroom: 5,
+      maxHistorySeconds: 30,
       sampleCount: 100,
       lineWidth: 1.5,
       futureDashed: true,

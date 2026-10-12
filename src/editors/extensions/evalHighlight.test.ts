@@ -6,7 +6,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { EditorState } from "@codemirror/state";
 import { EditorView } from "@codemirror/view";
-import { evalHighlightField, evalHighlightEffect } from "./evalHighlight.ts";
+import { evalHighlightField, evalHighlightEffect, flashEvalHighlight } from "./evalHighlight.ts";
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -156,6 +156,18 @@ describe("evalHighlight: decoration clears after animation duration", () => {
   afterEach(() => {
     vi.useRealTimers();
     document.body.innerHTML = "";
+  });
+
+  it("gives a repeated evaluation a full flash duration", async () => {
+    const view = createView("(a1 440)");
+    flashEvalHighlight(view, 0, 8);
+    await vi.advanceTimersByTimeAsync(800);
+    flashEvalHighlight(view, 0, 8, { isPreview: true });
+    await vi.advanceTimersByTimeAsync(200);
+    expect(getDecoRanges(view)).toHaveLength(1);
+    await vi.advanceTimersByTimeAsync(800);
+    expect(getDecoRanges(view)).toHaveLength(0);
+    view.destroy();
   });
 
   it("decoration is present immediately after flashEvalHighlight dispatch", async () => {

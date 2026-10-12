@@ -37,7 +37,6 @@
     line-height: inherit;
     -webkit-appearance: none;
     appearance: none;
-    outline: none;
 }
 
 .panel-section-toggle:hover {
@@ -102,7 +101,6 @@
     font: inherit;
     -webkit-appearance: none;
     appearance: none;
-    outline: none;
 }
 
 .panel-subgroup-arrow {
@@ -527,12 +525,12 @@
 
 .panel-button.reset {
     background-color: transparent;
-    color: #ff4d4d;
-    border-color: #ff4d4d;
+    color: var(--status-error, #ff4d4d);
+    border-color: var(--status-error, #ff4d4d);
 }
 
 .panel-button.reset:hover {
-    background-color: #ff4d4d;
+    background-color: var(--status-error, #ff4d4d);
     color: #fff;
     transform: none;
 }
@@ -692,11 +690,11 @@
 }
 
 .kb-conflict-msg {
-    color: #ffaa33;
+    color: var(--status-warn, #ffaa33);
 }
 
 .kb-conflict-blocked {
-    color: #ff4d4d;
+    color: var(--status-error, #ff4d4d);
 }
 
 .kb-conflict-actions {

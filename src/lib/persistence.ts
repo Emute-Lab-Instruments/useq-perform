@@ -45,14 +45,17 @@ export const PERSISTENCE_KEYS = {
   experienceLevel: "useqExperienceLevel",
   onboardingDismissed: "useq:onboarding-dismissed",
 
-  // DevMode
-  devModeState: "uSEQ-Perform-DevMode-State",
-
   // Zen mode
   zenProgress: "useq:zen:progress",
 
   // Live-edit panel
   liveEdits: "uSEQ-Perform-Editor-LiveEdits",
+
+  // Console panel layout (size, position, collapsed, filter toggles)
+  consoleLayout: "uSEQ-Perform-Console-Layout",
+
+  // Panel chrome geometry (per chrome design, per panel)
+  panelGeometry: "uSEQ-Perform-Panel-Geometry",
 
   // Legacy editor rollback keys. Read/mirrored while /legacy is supported.
   legacyEditorConfig: "editorConfig",

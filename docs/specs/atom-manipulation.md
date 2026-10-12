@@ -95,8 +95,8 @@ A symbol belongs to at most one cycle group. Cycling advances through the group 
 | `phasors` | `beat`, `bar`, `phrase`, `section` | Temporal scale ladder |
 | `phasor-durations` | `beat-dur`, `bar-dur` | Duration companions |
 | `time-warps` | `fast`, `slow`, `offset` | Time-context transforms |
-| `waveshapes` | `sin`, `cos`, `usin`, `ucos`, `tan`, `tri`, `sqr`, `pulse` | "Shapes you drive with a phasor" — all produce a periodic waveform from a 0→1 input |
-| `oscillators` | `osc`, `tri-osc`, `saw`, `sqr-osc`, `lfo`, `phasor` | State-bearing oscillator UGens |
+| `waveshapes` | `sin`, `cos`, `sin[bi]`, `tan`, `tri`, `sqr`, `pulse`, `saw` | "Shapes you drive with a phasor" — all produce a periodic waveform from a 0→1 input |
+| `oscillators` | `sin[lfo]`, `sin[lfo bi]`, `tri[lfo]`, `saw[lfo]`, `sqr[lfo]`, `phasor` | State-bearing oscillator specializations |
 | `arithmetic` | `+`, `-`, `*`, `/`, `%` | Variadic arithmetic operators |
 | `comparison` | `>`, `<`, `>=`, `<=`, `=` | Comparison operators |
 | `logic` | `and`, `or`, `not` | Boolean logic |
@@ -121,7 +121,12 @@ A symbol not in any group produces a no-op flash on LB/RB. User-defined names (`
 
 ### 3.3 Arity awareness (informative)
 
-Cycling from `sin` (1 arg) to `sqr` (1-2 args) to `pulse` (2 args) may leave the enclosing form with the wrong arity. This spec does **not** auto-fix arity — the change is a pure text substitution of the symbol. The user evaluates and sees a diagnostic if arity is wrong. Future: a post-cycle arity lint that inserts holes for missing args (see §7.1).
+Cycling from `sin` (one phasor) to `sqr` (one phasor) to
+`pulse` (one phasor, optional attached `:duty`) may leave the enclosing form
+with the wrong signature. This spec does **not** auto-fix arguments — the
+change is a pure text substitution of the symbol. The user evaluates and sees
+a diagnostic if the signature is wrong. Future: a post-cycle signature lint
+that inserts holes for missing args (see §7.1).
 
 ### 3.4 Group extensibility
 
@@ -173,7 +178,7 @@ The cycling widget is a transient inline overlay that appears during symbol/keyw
 ### 4.2 Appearance
 
 ```
-      ‹ cos  tan 「usin」 ucos  sqr ›
+      ‹ cos  tan 「sin[bi]」 tri  sqr ›
 ```
 
 - The **current value** is displayed in the centre, highlighted (bold, accent colour, surrounded by lenticular brackets or similar framing glyph).
@@ -197,7 +202,7 @@ The widget renders as a CodeMirror tooltip (or equivalent floating overlay) posi
 
 ### 4.5 Scrolling behaviour
 
-The visible window scrolls to keep the current value centred. At the wrap point (end → beginning), the widget shows the transition naturally: `‹ ... pulse  sin 「cos」 usin  ucos ... ›` (the group is treated as circular for display purposes near the wrap).
+The visible window scrolls to keep the current value centred. At the wrap point (end → beginning), the widget shows the transition naturally: `‹ ... saw  sin 「cos」 sin[bi]  tan ... ›` (the group is treated as circular for display purposes near the wrap).
 
 ### 4.6 Settings
 

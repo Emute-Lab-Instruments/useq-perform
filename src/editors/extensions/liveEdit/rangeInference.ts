@@ -43,8 +43,10 @@ export function inferRange(
     return { min: 1, max: Math.max(16, 2 * x), precision };
   }
 
-  // Number X with parent osc/phasor — likewise checked before unit-range.
-  if (parentHead === "osc" || parentHead === "phasor") {
+  // Number X with a free-running oscillator/phasor parent — checked before unit-range.
+  if (parentHead === "lfo" || parentHead?.startsWith("lfo/") ||
+      parentHead === "blfo" || parentHead?.startsWith("blfo/") ||
+      parentHead === "phasor") {
     return { min: 20, max: Math.max(2000, 2 * x), precision };
   }
 

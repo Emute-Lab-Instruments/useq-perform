@@ -16,7 +16,8 @@
 import { examineEnvironment, type EnvironmentState } from './startupContext.ts';
 import { createApp } from './appLifecycle.ts';
 import type { EditorView } from '@codemirror/view';
-import { loadConfigurationWithMetadata } from './appSettingsRepository.ts';
+import { loadBootstrapSettingsWithMetadata } from './appSettingsRepository.ts';
+import { dbg } from '../lib/debug.ts';
 import { editorSession, setEditorSession } from '../lib/editorStore.ts';
 import {
   disposeEditorLifecycle,
@@ -37,7 +38,7 @@ import {
 import { executeAction } from '../editors/commands/actionHandlers.ts';
 import { registerVisualisationPanel } from '../ui/adapters/visualisationPanel';
 import { visualisationSession } from '../effects/visualisationSession.ts';
-import { createMenuDispatcher } from '../lib/menu/dispatcher.ts';
+import { createMenuDispatcher } from '../editors/menu/dispatcher.ts';
 import { menuState, dispatchMenuInput } from '../lib/menu/store.ts';
 import { getCachedManifest } from '../lib/menu/manifest.ts';
 import type { ApplicationRootHandle } from '../ui/ApplicationRoot.tsx';
@@ -54,7 +55,6 @@ import {
   installBrowserEvalSurface,
 } from './browserEvalSurface.ts';
 import {
-  hasActiveWasmRuntimePort,
   isWasmRuntimeAvailable,
 } from './runtimeCoordinator.ts';
 import {
@@ -82,7 +82,7 @@ export interface BootstrapPlanInput {
 
 export interface BootstrapPlan {
   startupMode: BootstrapStartupMode;
-  startBrowserLocal: boolean;
+  awaitSavedPortReconnect: boolean;
   seedDefaultNoModuleExpressions: boolean;
   attemptHardwareReconnect: boolean;
   showUnsupportedBrowserWarning: boolean;
@@ -109,7 +109,7 @@ export function resolveBootstrapPlan(
     if (!input.wasmEnabled) {
       return {
         startupMode: "unsupported-browser",
-        startBrowserLocal: false,
+        awaitSavedPortReconnect: false,
         seedDefaultNoModuleExpressions: false,
         attemptHardwareReconnect: false,
         showUnsupportedBrowserWarning: true,
@@ -117,7 +117,7 @@ export function resolveBootstrapPlan(
     }
     return {
       startupMode: "no-module",
-      startBrowserLocal: true,
+      awaitSavedPortReconnect: false,
       seedDefaultNoModuleExpressions: true,
       attemptHardwareReconnect: false,
       showUnsupportedBrowserWarning: false,
@@ -127,7 +127,7 @@ export function resolveBootstrapPlan(
   if (!input.isWebSerialAvailable) {
     return {
       startupMode: input.wasmEnabled ? "browser-local" : "unsupported-browser",
-      startBrowserLocal: input.wasmEnabled,
+      awaitSavedPortReconnect: false,
       seedDefaultNoModuleExpressions: false,
       attemptHardwareReconnect: false,
       showUnsupportedBrowserWarning: !input.wasmEnabled,
@@ -137,7 +137,7 @@ export function resolveBootstrapPlan(
   if (input.wasmEnabled && input.startLocallyWithoutHardware) {
     return {
       startupMode: "browser-local",
-      startBrowserLocal: true,
+      awaitSavedPortReconnect: false,
       seedDefaultNoModuleExpressions: false,
       attemptHardwareReconnect: true,
       showUnsupportedBrowserWarning: false,
@@ -146,7 +146,7 @@ export function resolveBootstrapPlan(
 
   return {
     startupMode: "hardware",
-    startBrowserLocal: false,
+    awaitSavedPortReconnect: true,
     seedDefaultNoModuleExpressions: false,
     attemptHardwareReconnect: true,
     showUnsupportedBrowserWarning: false,
@@ -241,17 +241,6 @@ async function createAppUI(environmentState: EnvironmentState): Promise<AppUI> {
   });
   const menuCleanup = menuDispatcher.bind();
   const navHandle = bindGamepadNavigation(editor);
-  // Expose dispatcher on window for console-driven testing during round 2.
-  if (typeof globalThis !== 'undefined') {
-    void import('../editors/extensions/structure/adapter/dispatcher.ts')
-      .then((mod) => {
-        (globalThis as unknown as Record<string, unknown>).__structDispatch =
-          (action: string) => mod.dispatchAction(editor, action);
-      })
-      .catch(() => {
-        // Best-effort exposure; failure is non-fatal for app boot.
-      });
-  }
   gamepadPipeline.start();
 
   let disposed = false;
@@ -293,7 +282,7 @@ export async function bootstrap(): Promise<BootstrapResult> {
   let settingsSources: RuntimeSettingsSource[] = ['defaults'];
 
   try {
-    const result = await loadConfigurationWithMetadata();
+    const result = await loadBootstrapSettingsWithMetadata();
     settingsSources = result.settingsSources;
     replaceSettings(result.config);
   } catch (error) {
@@ -389,10 +378,7 @@ export async function bootstrap(): Promise<BootstrapResult> {
   //
   // VAL-ENGINE-022: suspended and error transitions post one clear
   // non-flooding console message through the central console store.
-  if (
-    environmentState.audioCapabilities.audioCapable
-    && hasActiveWasmRuntimePort()
-  ) {
+  if (environmentState.audioCapabilities.audioCapable) {
     try {
       const [{ createBrowserSynthesisService }, { addConsoleMessage }] =
         await Promise.all([
@@ -411,7 +397,16 @@ export async function bootstrap(): Promise<BootstrapResult> {
       const synthesisService = createBrowserSynthesisService({
         capabilities: environmentState.audioCapabilities,
         devmode: startupFlags.devmode,
-        workerPort: getActiveWasmRuntimePort(),
+        // Resolve at every producer operation: the runtime controller
+        // replaces this Worker port after crashes and enable/disable cycles.
+        workerPort: () => {
+          try {
+            return getActiveWasmRuntimePort() as unknown as
+              import("../audio/synthesisService.ts").SynthesisWorkerPort;
+          } catch {
+            return undefined;
+          }
+        },
         consoleMessageSink: (message, type) => {
           // The synthesis service emits plain strings; the console
           // store escapes and renders inline markdown. The sink types
@@ -527,7 +522,7 @@ async function maybeConnectNativeBridge(
         void disconnect(serialPort);
       },
     });
-    console.log(`[bootstrap] native bridge: connecting to ${url}`);
+    dbg("bootstrap", `native bridge: connecting to ${url}`);
     await connectToSerialPort(serialPort);
   } catch (error) {
     reportBootstrapFailure("native-bridge", error);

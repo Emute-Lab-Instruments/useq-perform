@@ -43,7 +43,7 @@ These are behaviours currently hardcoded as inline constants that would benefit 
 | **Adaptive quality pressure window** | `8` frames | `src/effects/adaptiveQuality.ts:36` | Expose if users want to tune responsiveness vs stability of quality changes |
 | **Vis future lead seconds** | Already in settings | `settings.visualisation.futureLeadSeconds` | ✓ Already good |
 | **Default starting code** | Hardcoded string | `src/lib/editorDefaults.ts` | Could be a file path or template name — but low priority |
-| **Panel chrome design** | Switchable at runtime (devmode) | `DesignSelector` component | Already has a widget, but it's devmode-only. Could be a setting. |
+| **Panel chrome design** | Persisted setting `ui.panelChrome` | Settings → UI → Panel style | Done: promoted from the devmode-only widget. |
 | **Keybinding chord timeout** | In `KeybindingsSettings.chordTimeout` | Schema has the field | ✓ Interface exists but verify it's wired |
 
 ---

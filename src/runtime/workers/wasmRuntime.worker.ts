@@ -26,13 +26,13 @@
 
 import {
   assertWasmAbi,
-  REQUIRED_WASM_EXPORTS,
   OPTIONAL_WASM_EXPORTS,
   WasmAbiMismatchError,
 } from "../../contracts/wasmAbi";
 import { TRANSPORT_STATE_TO_COMMAND } from "../../contracts/useqRuntimeContract";
 import type {
   LiveSlotMetadata,
+  OutputClassification,
   ProjectionMode,
   RuntimeDiagnostic,
   SynthArtifactsPayload,
@@ -46,23 +46,28 @@ import {
   createWasmBatchEvaluator,
   createWasmLiveInputController,
   createWasmProbeController,
+  createWasmSynthDeclarationReset,
+  bindRequiredWasmExports,
+  bindWasmDiagnosticReaders,
   isBrokenOptionalExportError,
   type EmscriptenModule,
 } from "../wasmInterpreterCore";
+import { bindOutputClassifications } from "../wasmOutputClassifications";
 import { isSynthArtifactsPayload } from "../../contracts/runtimeTypes";
 import { validateSynthProducerControlBindingsAgainstControls } from
   "../../contracts/synthProducerControlMapping";
 import {
   attachSynthesisControlView,
   CONTROL_LOOKAHEAD_BLOCKS,
+  controlChannelKey,
   createProducerPacingWaiter,
   DEFAULT_RENDER_QUANTUM_FRAMES,
   type SynthesisControlView,
 } from "../../contracts/synthesisControlAbi";
 import {
   createProducerScheduler,
-  type ProducedBlockAudit,
   type ProducerExecutor,
+  type ProducerRateBinding,
   type ProducerScheduler,
   type ProducerSchedulingClock,
 } from "../../audio/producerScheduler";
@@ -116,9 +121,14 @@ interface InterpreterHandle {
   supportsTimeWindow: () => boolean;
   supportsTickAndProject: () => boolean;
   supportsSynthControlTick: () => boolean;
+  supportsSynthControlSampling: () => boolean;
   tickSynthControls: (
     time: number,
     expectedControlCount: number,
+  ) => Float64Array | null;
+  sampleSynthControls: (
+    controlIndices: readonly number[],
+    sampleTimes: readonly number[],
   ) => Float64Array | null;
   supportsLiveInputs: () => boolean;
   setLiveInputs: (values: Record<string, number>) => number;
@@ -127,8 +137,10 @@ interface InterpreterHandle {
   probeSample: (slot: number, startTime: number, endTime: number, count: number) => Float64Array | null;
   probeFree: (slot: number) => void;
   getLiveSlots: () => LiveSlotMetadata[];
+  readOutputClassifications: () => OutputClassification | null;
   applyStateSnapshot: (json: string) => boolean;
   setFailureMode: (mode: "lkg" | "zero") => boolean;
+  clearSynthDeclarations: () => boolean;
   release: () => void;
 }
 
@@ -166,6 +178,8 @@ let producerBlocksPublished = 0;
 // live producer without a stop/start cycle.
 const producerBlockRateChannels: string[] = [];
 const producerControlBindings: SynthProducerControlBinding[] = [];
+const producerFastBindings: ProducerRateBinding[] = [];
+const producerEventBindings: ProducerRateBinding[] = [];
 let producerCompilerControlCount = 0;
 interface PreparedProducerCommit {
   epoch: number;
@@ -174,6 +188,10 @@ interface PreparedProducerCommit {
   previousEpoch: number;
   previousCompilerControlCount: number;
   previousControlBindings: SynthProducerControlBinding[];
+  fastBindings: ProducerRateBinding[];
+  eventBindings: ProducerRateBinding[];
+  previousFastBindings: ProducerRateBinding[];
+  previousEventBindings: ProducerRateBinding[];
 }
 let preparedProducerCommit: PreparedProducerCommit | null = null;
 let lastArmedProducerCommit: PreparedProducerCommit | null = null;
@@ -188,14 +206,18 @@ function rearmProducerChannels(channels: readonly string[]): void {
 function rearmProducerControlMapping(
   compilerControlCount: number,
   bindings: readonly SynthProducerControlBinding[],
+  fastBindings: readonly ProducerRateBinding[] = [],
+  eventBindings: readonly ProducerRateBinding[] = [],
 ): void {
   producerCompilerControlCount = compilerControlCount;
   producerControlBindings.length = 0;
   for (const binding of bindings) producerControlBindings.push({ ...binding });
+  producerFastBindings.length = 0;
+  producerFastBindings.push(...fastBindings.map((binding) => ({ ...binding })));
+  producerEventBindings.length = 0;
+  producerEventBindings.push(...eventBindings.map((binding) => ({ ...binding })));
   rearmProducerChannels(bindings.map((binding) => binding.channelKey));
 }
-const producerAudit: ProducedBlockAudit[] = [];
-
 /**
  * Producer pacing clock. `sleep` blocks on the SAB wake word so each
  * scheduler iteration lines up with a worklet block publication rather
@@ -252,6 +274,9 @@ const producerExecutor: ProducerExecutor = {
     }
     return out;
   },
+  sampleSynthControls(controlIndices, sampleTimes) {
+    return interpreter?.sampleSynthControls(controlIndices, sampleTimes) ?? null;
+  },
 };
 
 // ─── Helpers ───────────────────────────────────────────────────────────────
@@ -284,38 +309,11 @@ async function instantiateInterpreter(scriptUrl: string): Promise<InterpreterHan
 
   assertWasmAbi(module);
 
-  const initDesc = REQUIRED_WASM_EXPORTS.useq_init;
-  const useq_init = module.cwrap(
-    initDesc.symbol,
-    initDesc.returnType,
-    initDesc.argTypes as unknown as string[],
-  ) as () => void;
-
-  const evalDesc = REQUIRED_WASM_EXPORTS.useq_eval;
-  const useq_eval = module.cwrap(
-    evalDesc.symbol,
-    evalDesc.returnType,
-    evalDesc.argTypes as unknown as string[],
-  ) as (code: string) => string;
-
-  const timeDesc = REQUIRED_WASM_EXPORTS.useq_update_time;
-  const useq_update_time = module.cwrap(
-    timeDesc.symbol,
-    timeDesc.returnType,
-    timeDesc.argTypes as unknown as string[],
-  ) as (t: number) => void;
-
-  const outputDesc = REQUIRED_WASM_EXPORTS.useq_eval_output;
-  const useq_eval_output = module.cwrap(
-    outputDesc.symbol,
-    outputDesc.returnType,
-    outputDesc.argTypes as unknown as string[],
-  ) as (name: string, t: number) => number;
-
-  const evaluateOutputAtTime = (name: string, time: number): number => {
-    const value = useq_eval_output(name, Number(time) || 0);
-    return Number.isNaN(value) ? Number.NaN : value;
-  };
+  const requiredExports = bindRequiredWasmExports(module);
+  const useq_init = requiredExports.initialize;
+  const useq_eval = requiredExports.evaluate;
+  const useq_update_time = requiredExports.updateTime;
+  const evaluateOutputAtTime = requiredExports.evaluateOutputAtTime;
   const batchEvaluator = createWasmBatchEvaluator(
     module,
     evaluateOutputAtTime,
@@ -330,14 +328,7 @@ async function instantiateInterpreter(scriptUrl: string): Promise<InterpreterHan
   // Diagnostic readers must be reachable via `globalThis.__useqWasmRuntime`
   // because `readLast/ActiveDiagnosticsLocal` (below) read from that handle
   // rather than holding a direct module reference.
-  const lastDiagsFn = bindOptionalCwrap(
-    module,
-    OPTIONAL_WASM_EXPORTS.useq_last_diagnostics,
-  ) as (() => string) | null;
-  const activeDiagsFn = bindOptionalCwrap(
-    module,
-    OPTIONAL_WASM_EXPORTS.useq_active_diagnostics,
-  ) as (() => string) | null;
+  const diagnosticReaders = bindWasmDiagnosticReaders(module);
   const synthArtifactsFn = bindOptionalCwrap(
     module,
     OPTIONAL_WASM_EXPORTS.useq_synth_artifacts,
@@ -346,13 +337,23 @@ async function instantiateInterpreter(scriptUrl: string): Promise<InterpreterHan
     module,
     OPTIONAL_WASM_EXPORTS.useq_tick_synth_controls,
   ) as ((time: number, bufferPtr: number, bufferLength: number) => number) | null;
+  let sampleSynthControlsFn = bindOptionalCwrap(
+    module,
+    OPTIONAL_WASM_EXPORTS.useq_sample_synth_controls_into,
+  ) as ((indicesPtr: number, controlCount: number, timesPtr: number,
+    sampleCount: number, valuesPtr: number) => number) | null;
+  const synthSampleIndices = createHeapBuffer(module, "synth sample indices");
+  const synthSampleTimes = createHeapBuffer(module, "synth sample times");
+  const synthSampleValues = createHeapBuffer(module, "synth sample values");
   const setFailureModeFn = bindOptionalCwrap(
     module,
     OPTIONAL_WASM_EXPORTS.useq_set_failure_mode,
   ) as ((mode: number) => number) | null;
+  const clearSynthDeclarations = createWasmSynthDeclarationReset(module);
+  const readOutputClassifications = bindOutputClassifications(module);
   (globalThis as { __useqWasmRuntime?: UseqRuntimeGlobal }).__useqWasmRuntime = {
-    useq_last_diagnostics: lastDiagsFn ?? undefined,
-    useq_active_diagnostics: activeDiagsFn ?? undefined,
+    useq_last_diagnostics: diagnosticReaders.last,
+    useq_active_diagnostics: diagnosticReaders.active,
     useq_synth_artifacts: synthArtifactsFn ?? undefined,
   };
 
@@ -368,6 +369,7 @@ async function instantiateInterpreter(scriptUrl: string): Promise<InterpreterHan
     supportsTimeWindow: batchEvaluator.supportsTimeWindow,
     supportsTickAndProject: batchEvaluator.supportsTickAndProject,
     supportsSynthControlTick: (): boolean => tickSynthControlsFn !== null,
+    supportsSynthControlSampling: (): boolean => sampleSynthControlsFn !== null,
     tickSynthControls: (
       time: number,
       expectedControlCount: number,
@@ -396,6 +398,29 @@ async function instantiateInterpreter(scriptUrl: string): Promise<InterpreterHan
         return null;
       }
     },
+    sampleSynthControls: (controlIndices, sampleTimes) => {
+      if (!sampleSynthControlsFn || controlIndices.length === 0 ||
+          sampleTimes.length === 0 || controlIndices.length * sampleTimes.length > 65536 ||
+          controlIndices.some((index) => !Number.isSafeInteger(index) || index < 0) ||
+          sampleTimes.some((time) => !Number.isFinite(time))) return null;
+      try {
+        const indices = synthSampleIndices.ensure(controlIndices.length);
+        const times = synthSampleTimes.ensure(sampleTimes.length);
+        const values = synthSampleValues.ensure(controlIndices.length * sampleTimes.length);
+        for (let i = 0; i < controlIndices.length; i += 1) indices.view[i] = controlIndices[i]!;
+        for (let i = 0; i < sampleTimes.length; i += 1) times.view[i] = sampleTimes[i]!;
+        const result = sampleSynthControlsFn(
+          indices.pointer, controlIndices.length, times.pointer, sampleTimes.length,
+          values.pointer,
+        );
+        return result === 0
+          ? values.view.subarray(0, controlIndices.length * sampleTimes.length)
+          : null;
+      } catch (error) {
+        if (isBrokenOptionalExportError(error)) sampleSynthControlsFn = null;
+        return null;
+      }
+    },
     supportsLiveInputs: () => liveInputs.supported,
     setLiveInputs: liveInputs.set,
     setHwInputValue: liveInputs.setHardwareInput,
@@ -403,16 +428,21 @@ async function instantiateInterpreter(scriptUrl: string): Promise<InterpreterHan
     probeSample: probes.sample,
     probeFree: probes.free,
     getLiveSlots: liveInputs.getSlots,
+    readOutputClassifications,
     applyStateSnapshot: liveInputs.applyStateSnapshot,
     setFailureMode: (mode) => {
       if (!setFailureModeFn) return false;
       const requested = mode === "zero" ? 1 : 0;
       return setFailureModeFn(requested) === requested;
     },
+    clearSynthDeclarations,
     release: () => {
       batchEvaluator.release();
       probes.release();
       synthControlBuffer.release();
+      synthSampleIndices.release();
+      synthSampleTimes.release();
+      synthSampleValues.release();
     },
   };
 }
@@ -671,6 +701,16 @@ async function handleRequest(request: WasmWorkerRequest): Promise<void> {
         });
         return;
       }
+      case "readOutputClassifications": {
+        postResponse({
+          type: "readOutputClassifications-result",
+          id,
+          classification: wasmEnabled && interpreter
+            ? interpreter.readOutputClassifications()
+            : null,
+        });
+        return;
+      }
       case "setFailureMode": {
         const accepted = !!(wasmEnabled && interpreter?.setFailureMode(request.mode));
         postResponse({ type: "setFailureMode-result", id, accepted });
@@ -679,7 +719,12 @@ async function handleRequest(request: WasmWorkerRequest): Promise<void> {
       case "setLiveInputs": {
         let applied = 0;
         if (wasmEnabled && interpreter) {
-          applied = interpreter.setLiveInputs(request.values);
+          if (producerRunning && producer) {
+            producer.applyInputs(request.values);
+            applied = Object.keys(request.values).length;
+          } else {
+            applied = interpreter.setLiveInputs(request.values);
+          }
         }
         postResponse({ type: "setLiveInputs-result", id, applied });
         return;
@@ -738,8 +783,6 @@ async function handleRequest(request: WasmWorkerRequest): Promise<void> {
           preparedProducerCommit = null;
           lastArmedProducerCommit = null;
           rearmProducerControlMapping(0, []);
-          // Reset the audit so devmode traces reflect this session only.
-          producerAudit.length = 0;
           producerBlocksPublished = 0;
           postResponse({ type: "producerInstallSab-result", id, installed: true });
         } catch (error) {
@@ -759,6 +802,7 @@ async function handleRequest(request: WasmWorkerRequest): Promise<void> {
         if (
           !controlView ||
           !interpreter?.supportsSynthControlTick() ||
+          !interpreter.supportsSynthControlSampling() ||
           !Number.isSafeInteger(request.epoch) ||
           request.epoch <= 0
         ) {
@@ -782,13 +826,38 @@ async function handleRequest(request: WasmWorkerRequest): Promise<void> {
           postResponse({ type: "producerPrepareCommit-result", id, prepared: false });
           return;
         }
+        const fastBindings: ProducerRateBinding[] = [];
+        const eventBindings: ProducerRateBinding[] = [];
+        for (let compilerControlIndex = 0;
+          compilerControlIndex < compilerArtifacts.controls.length;
+          compilerControlIndex += 1) {
+          const control = compilerArtifacts.controls[compilerControlIndex]!;
+          const binding = {
+            channelKey: controlChannelKey(control.identity, control.param),
+            compilerControlIndex,
+          };
+          if (control.smoothing === "latch") eventBindings.push(binding);
+          else if (control.rate === "fast") fastBindings.push(binding);
+        }
+        if (fastBindings.length > controlView.fastRateCount ||
+            eventBindings.length > controlView.eventChannelCount) {
+          postResponse({ type: "producerPrepareCommit-result", id, prepared: false });
+          return;
+        }
+        const blockBindings = request.controlBindings.filter((binding) =>
+          compilerArtifacts.controls[binding.compilerControlIndex]?.smoothing !== "latch",
+        );
         preparedProducerCommit = {
           epoch: request.epoch,
           compilerControlCount: request.compilerControlCount,
-          controlBindings: request.controlBindings.map((binding) => ({ ...binding })),
+          controlBindings: blockBindings.map((binding) => ({ ...binding })),
           previousEpoch: controlView.pendingEpoch,
           previousCompilerControlCount: producerCompilerControlCount,
           previousControlBindings: producerControlBindings.map((binding) => ({ ...binding })),
+          fastBindings,
+          eventBindings,
+          previousFastBindings: producerFastBindings.map((binding) => ({ ...binding })),
+          previousEventBindings: producerEventBindings.map((binding) => ({ ...binding })),
         };
         postResponse({ type: "producerPrepareCommit-result", id, prepared: true });
         return;
@@ -803,13 +872,15 @@ async function handleRequest(request: WasmWorkerRequest): Promise<void> {
           rearmProducerControlMapping(
             lastArmedProducerCommit.previousCompilerControlCount,
             lastArmedProducerCommit.previousControlBindings,
+            lastArmedProducerCommit.previousFastBindings,
+            lastArmedProducerCommit.previousEventBindings,
           );
           controlView.pendingEpoch = lastArmedProducerCommit.previousEpoch;
           // Candidate blocks may already be queued even though the worklet's
           // final activation gate failed. Drop the whole lookahead window so
           // the prior graph can never consume candidate-layout values; the
           // running producer immediately refills it from the restored layout.
-          controlView.ringReadIndex = controlView.ringWriteIndex;
+          controlView.discardQueuedBlocks();
           lastArmedProducerCommit = null;
           aborted = true;
         }
@@ -832,11 +903,12 @@ async function handleRequest(request: WasmWorkerRequest): Promise<void> {
           view: controlView,
           map: transportMap,
           blockRateChannels: producerBlockRateChannels,
+          fastRateBindings: producerFastBindings,
+          eventBindings: producerEventBindings,
           lookaheadBlocks:
             request.lookaheadBlocks ?? CONTROL_LOOKAHEAD_BLOCKS,
           renderQuantumFrames:
             request.renderQuantumFrames ?? DEFAULT_RENDER_QUANTUM_FRAMES,
-          audit: producerAudit,
         });
         producer.start();
         producerRunning = true;
@@ -849,9 +921,7 @@ async function handleRequest(request: WasmWorkerRequest): Promise<void> {
         producerLoopDriver = createProducerLoopDriver({
           iterate: () => {
             if (!producerRunning || !producer) return;
-            const before = producerAudit.length;
-            producer.iterate();
-            producerBlocksPublished += producerAudit.length - before;
+            producerBlocksPublished += producer.iterate();
           },
           yieldToQueue: (runNext) => {
             // setTimeout(0) is the unconditional macrotask loop budget;
@@ -910,6 +980,8 @@ async function handleRequest(request: WasmWorkerRequest): Promise<void> {
             transportMap.reanchor(opts);
             break;
         }
+        // A map revision invalidates every queued lookahead block.
+        producer?.reanchor();
         postResponse({
           type: "producerTransportUpdate-result",
           id,
@@ -943,6 +1015,8 @@ async function handleRequest(request: WasmWorkerRequest): Promise<void> {
         rearmProducerControlMapping(
           armed.compilerControlCount,
           armed.controlBindings,
+          armed.fastBindings,
+          armed.eventBindings,
         );
         lastArmedProducerCommit = armed;
         preparedProducerCommit = null;
@@ -972,12 +1046,8 @@ async function handleRequest(request: WasmWorkerRequest): Promise<void> {
         return;
       }
       case "clearSynthDeclarations": {
-        // VAL-CROSS-009 post-recovery eval-pipeline fix: clear the
-        // WASM compiler's synth declarations by evaluating (useq-clear).
-        // The synth declarations persist across service recovery (the
-        // Worker is not recreated); without this clear the stale
-        // declaration triggers the M1 single-node capacity diagnostic
-        // on the first post-recovery eval.
+        // Recovery needs to release synth declarations without clearing the
+        // live program that this Worker also serves for evaluation/visualisation.
         if (!wasmEnabled || !interpreter) {
           postResponse({
             type: "clearSynthDeclarations-result",
@@ -987,7 +1057,7 @@ async function handleRequest(request: WasmWorkerRequest): Promise<void> {
           return;
         }
         try {
-          interpreter.evaluate("(useq-clear)");
+          if (!interpreter.clearSynthDeclarations()) throw new Error("synth declaration reset unavailable");
           postResponse({
             type: "clearSynthDeclarations-result",
             id,

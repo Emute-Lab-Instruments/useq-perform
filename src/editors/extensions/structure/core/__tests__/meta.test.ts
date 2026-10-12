@@ -1,23 +1,22 @@
 /**
  * Meta operations tests (§6.6).
  */
-import { beforeEach, describe, expect, it } from "vitest";
+import { describe, expect, it } from "vitest";
 
 import { defaultIdGen, __resetIdCounterForTests } from "../types.ts";
-import { metaAdd, metaRemove, metaCycle, metaFoldToggle, DEFAULT_META_CYCLE } from "../meta.ts";
+import { metaAdd, metaRemove, metaCycle, metaFoldToggle } from "../meta.ts";
 import type { MetaFoldToggleResult } from "../meta.ts";
 import {
   doc,
   list,
   listWithMetas,
-  num,
   pp,
   stateOn,
   sym,
   hole,
 } from "./builders.ts";
-import { nodeCursor, singleCursor } from "../types.ts";
-import type { Meta, State } from "../types.ts";
+import { nodeCursor } from "../types.ts";
+import type { Meta } from "../types.ts";
 import { findById } from "../traversal.ts";
 
 // ─── Helpers ───────────────────────────────────────────────────────────────

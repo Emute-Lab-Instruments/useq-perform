@@ -1,0 +1,94 @@
+/* Toast surface — docs/specs/overlays.md §1.7 */
+
+.toast-stack {
+  position: fixed;
+  left: 16px;
+  bottom: 16px;
+  z-index: var(--z-toast, 1100);
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  max-width: min(420px, calc(100vw - 32px));
+  pointer-events: none;
+}
+
+.toast {
+  --toast-accent: var(--status-info, var(--accent-color, #4a9eff));
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 10px 12px;
+  background-color: var(--panel-bg, rgba(30, 30, 30, 0.95));
+  color: var(--text-primary, #f8f8f2);
+  border: 1px solid var(--panel-border, rgba(255, 255, 255, 0.2));
+  border-left: 3px solid var(--toast-accent);
+  border-radius: var(--panel-border-radius, 4px);
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.35);
+  font-size: 13px;
+  line-height: 1.4;
+  pointer-events: auto;
+}
+
+.toast--success { --toast-accent: var(--status-ok, #3fb950); }
+.toast--warn { --toast-accent: var(--status-warn, #d29922); }
+.toast--error { --toast-accent: var(--status-error, #f85149); }
+
+.toast-message {
+  flex: 1;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.toast-action,
+.toast-dismiss {
+  flex: none;
+  background: none;
+  border: 1px solid transparent;
+  border-radius: var(--item-border-radius, 4px);
+  color: inherit;
+  cursor: pointer;
+  font: inherit;
+}
+
+.toast-action {
+  padding: 0 8px;
+  color: var(--toast-accent);
+  border-color: var(--toast-accent);
+}
+
+.toast-dismiss {
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  font-size: 16px;
+  line-height: 1;
+  color: var(--text-muted, rgba(255, 255, 255, 0.5));
+}
+
+.toast-action:hover,
+.toast-dismiss:hover {
+  background-color: var(--panel-item-hover-bg, rgba(255, 255, 255, 0.1));
+}
+
+.toast-action:focus-visible,
+.toast-dismiss:focus-visible {
+  outline: 2px solid var(--accent-color, #4a9eff);
+  outline-offset: 1px;
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .toast {
+    animation: toast-in 160ms ease-out;
+  }
+
+  @keyframes toast-in {
+    from {
+      opacity: 0;
+      transform: translateY(8px);
+    }
+    to {
+      opacity: 1;
+      transform: none;
+    }
+  }
+}

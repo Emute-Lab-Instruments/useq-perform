@@ -1,6 +1,6 @@
 import type { ActionId } from "../lib/keybindings/actions";
 import { modalShiftLayers } from "../lib/gamepad/paradigms/modal-shift";
-import { defaultKeyBindings } from "../lib/keybindings/defaults";
+import { activeKeyBindings } from "../ui/keybindings/activeBindings";
 import type { Layer } from "../lib/gamepad/types";
 
 export interface ButtonHint {
@@ -48,7 +48,7 @@ function gestureKeyToHint(gestureKey: string, layerName: string): string | null 
 // Build reverse lookup: ActionId → keyboard shortcut
 function buildKeyboardReverseLookup(): Map<string, string> {
   const lookup = new Map<string, string>();
-  for (const binding of defaultKeyBindings) {
+  for (const binding of activeKeyBindings()) {
     if (lookup.has(binding.action)) continue;
     if (binding.when) continue; // skip context-dependent bindings
     lookup.set(binding.action, formatKeyboardShortcut(binding.key));
@@ -70,12 +70,11 @@ function formatKeyboardShortcut(key: string): string {
 }
 
 const gamepadLookup = buildGamepadReverseLookup(modalShiftLayers);
-const keyboardLookup = buildKeyboardReverseLookup();
 
 export function getButtonHint(actionId: ActionId): ButtonHint {
   return {
     gamepad: gamepadLookup.get(actionId) ?? null,
-    keyboard: keyboardLookup.get(actionId) ?? null,
+    keyboard: buildKeyboardReverseLookup().get(actionId) ?? null,
   };
 }
 

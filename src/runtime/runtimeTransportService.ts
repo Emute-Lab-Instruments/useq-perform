@@ -1,5 +1,3 @@
-import { Effect } from "effect";
-
 import type { SharedTransportCommand } from "../contracts/useqRuntimeContract";
 import type { TransportState } from "../machines/transport.machine";
 import type { WasmRuntimePort } from "../contracts/runtimePorts";
@@ -11,8 +9,8 @@ import {
 import {
   supportsHardwareTransport,
   supportsWasmTransport,
-  type TransportMode,
 } from "./runtimeSession";
+import { getActiveSynthesisService } from "./activeSynthesisService";
 
 // ── Active port resolution ─────────────────────────────────────
 //
@@ -47,66 +45,66 @@ export function toggleRuntimeConnection(): Promise<void> {
   return webSerialHostPort.toggleConnection();
 }
 
-export function resolveRuntimeTransportMode(): TransportMode {
-  return getRuntimeSessionState().session.transportMode;
-}
-
-/**
- * Called by transport producers to publish a diagnostics-only update
- * (e.g. protocol mode changed without a full connection change). The published
- * snapshot derives protocolMode from canonical session state; the argument is
- * the change trigger and is not itself published.
- */
-export function sendRuntimeTransportCommand(command: SharedTransportCommand) {
-  return Effect.gen(function* (_) {
-    const ports = activePortsForSharedCommands();
-    const effects = [];
-
-    if (ports.hardware) {
-      effects.push(
-        Effect.tryPromise({
-          try: () => ports.hardware!.sendTransportCommand(command),
-          catch: (error) => new Error(`Hardware error: ${error}`),
-        })
-      );
-    }
-
-    if (ports.wasm) {
-      effects.push(
-        Effect.tryPromise({
-          try: () => ports.wasm!.sendTransportCommand(command),
-          catch: (error) => new Error(`WASM error: ${error}`),
-        })
-      );
-    }
-
-    if (effects.length > 0) {
-      yield* _(Effect.all(effects, { concurrency: "unbounded" }));
-    }
-
-    return command;
-  });
-}
-
-export function queryRuntimeHardwareTransportState() {
+/** Send concurrently to the currently active ports, retaining error attribution. */
+export async function sendRuntimeTransportCommand(command: SharedTransportCommand): Promise<SharedTransportCommand> {
   const ports = activePortsForSharedCommands();
-
-  if (!ports.hardware) {
-    return Effect.succeed(null as TransportState | null);
-  }
-
-  return Effect.tryPromise<TransportState | null, TransportState | null>({
-    try: () => ports.hardware!.queryTransportState(),
-    catch: () => null,
-  });
+  await Promise.all((["hardware", "wasm"] as const).map(async (kind) => {
+    const port = ports[kind];
+    if (!port) return;
+    try {
+      await port.sendTransportCommand(command);
+    } catch (error) {
+      throw new Error(`${kind === "hardware" ? "Hardware" : "WASM"} error: ${error}`);
+    }
+  }));
+  return command;
 }
 
-export function syncRuntimeWasmTransportState(state: TransportState) {
-  return Effect.tryPromise({
-    try: async () => {
-      await getActiveWasmRuntimePort().syncTransportState(state);
-      return state;
-    },
-    catch: (error) => new Error(`WASM sync error: ${error}`),
-  }).pipe(Effect.catchAll(() => Effect.succeed(null as TransportState | null)));
+export async function queryRuntimeHardwareTransportState(): Promise<TransportState | null> {
+  const { hardware } = activePortsForSharedCommands();
+  if (!hardware) return null;
+  try {
+    return await hardware.queryTransportState();
+  } catch {
+    return null;
+  }
+}
+
+export async function syncRuntimeWasmTransportState(state: TransportState): Promise<TransportState | null> {
+  try {
+    await getActiveWasmRuntimePort().syncTransportState(state);
+    return state;
+  } catch {
+    return null;
+  }
+}
+
+/** Route transport-map changes to the audio producer owned by the WASM Worker. */
+export async function updateRuntimeWasmAudioTransport(
+  transition: "start" | "pause" | "resume" | "stop" | "reanchor",
+): Promise<void> {
+  try {
+    const port = getActiveWasmRuntimePort() as WasmRuntimePort & {
+      producerReadTelemetry?: () => Promise<{ audioFrame: bigint | number } | null>;
+      producerTransportUpdate?: (options: {
+        transition: "start" | "pause" | "resume" | "stop" | "reanchor";
+        atFrame: bigint;
+        atTime?: number;
+      }) => Promise<number>;
+    };
+    if (port.producerTransportUpdate) {
+      const telemetry = await port.producerReadTelemetry?.();
+      const rawFrame = telemetry?.audioFrame ?? 0n;
+      const atFrame = typeof rawFrame === "bigint" ? rawFrame : BigInt(Math.max(0, Math.trunc(rawFrame)));
+      await port.producerTransportUpdate({ transition, atFrame });
+    }
+    const synthesis = getActiveSynthesisService();
+    if (transition === "pause") await synthesis?.pauseForTransport();
+    else if (transition === "resume" || transition === "start") {
+      await synthesis?.resumeForTransport();
+    } else if (transition === "stop") synthesis?.stopForTransport();
+  } catch {
+    // Audio is an optional runtime capability; transport command delivery
+    // remains owned by the existing hardware/WASM command path.
+  }
 }

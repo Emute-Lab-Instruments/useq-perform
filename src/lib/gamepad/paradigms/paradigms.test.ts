@@ -4,15 +4,15 @@
 // resolver without errors. Not exhaustive — validates the plumbing.
 
 import { describe, expect, it, vi } from "vitest";
-import { chord, keyOf, tap, held } from "../gestures";
+import { chord, tap, held } from "../gestures";
 import {
   buildLayerMap,
   lintBindings,
   resolveGesture,
 } from "../resolver";
-import type { AppStateSnapshot, GamepadState, Layer, LayerName } from "../types";
+import type { AppStateSnapshot, GamepadState, LayerName } from "../types";
 import { radialLayer } from "./radial";
-import { modalShiftLayers } from "./modal-shift";
+import { modalShiftLayers, modalShiftTransientLayers } from "./modal-shift";
 import { leaderLayers, leaderTransientLayers } from "./leader";
 import { hydraLayers, hydraTransientLayers } from "./hydra";
 import { chordHeavyLayers } from "./chord-heavy";
@@ -26,7 +26,9 @@ vi.mock("../../mainMenu/store", () => ({
 }));
 
 import { isMenuOpen } from "../../menu/store";
+import { isMainMenuOpen } from "../../mainMenu/store";
 const mockedIsMenuOpen = vi.mocked(isMenuOpen);
+const mockedIsMainMenuOpen = vi.mocked(isMainMenuOpen);
 
 const ln = (n: string) => n as LayerName;
 
@@ -120,6 +122,15 @@ describe("paradigm: modal-shift", () => {
     if (r?.kind === "action") expect(r.action).toBe("eval.now");
   });
 
+  it("tap(A) pushes act-on and its transient verbs resolve to shared actions", () => {
+    const layers = [...modalShiftLayers, ...modalShiftTransientLayers];
+    const map = buildLayerMap(layers);
+    expect(resolveGesture(tap("A"), mkState(), layers, map)).toMatchObject({ kind: "leader", layerName: "act-on" });
+    const active = mkState({ transientLayers: [{ name: ln("act-on"), pushedAt: 0, expiresAt: 2000 }] });
+    expect(resolveGesture(tap("B"), active, layers, map)).toMatchObject({ kind: "action", action: "actOn.cut" });
+    expect(resolveGesture(tap("LB"), active, layers, map)).toMatchObject({ kind: "action", action: "actOn.copy" });
+  });
+
   it("LB-shifted layer shadows base for tap(A)", () => {
     const map = buildLayerMap([...modalShiftLayers]);
     const state = mkState({ heldButtons: new Set(["LB"]) });
@@ -134,6 +145,41 @@ describe("paradigm: modal-shift", () => {
     const r = resolveGesture(tap("A"), state, [...modalShiftLayers], map);
     expect(r?.kind).toBe("action");
     if (r?.kind === "action") expect(r.action).toBe("probe.toggle");
+  });
+
+  // ─── Main-menu layer (main-menu.md §4.1, gamepad.md §6.8.1) ───────────────
+  describe("main-menu layer", () => {
+    it("passes binding lint", () => {
+      expect(lintBindings([...modalShiftLayers])).toEqual([]);
+    });
+
+    it("still resolves its own bindings while active", () => {
+      mockedIsMainMenuOpen.mockReturnValue(true);
+      const map = buildLayerMap([...modalShiftLayers]);
+      const r = resolveGesture(tap("A"), mkState(), [...modalShiftLayers], map);
+      expect(r?.kind).toBe("action");
+      if (r?.kind === "action") expect(r.action).toBe("mainMenu.select");
+    });
+
+    it("masks unbound gestures instead of leaking to the base layer", () => {
+      // X → menu.radial, Y → edit.delete and Left → nav.left live on the base
+      // layer; while the main menu is open they must be discarded, not
+      // executed behind the menu (gamepad.md §6.8.1 "masks all other input").
+      mockedIsMainMenuOpen.mockReturnValue(true);
+      const map = buildLayerMap([...modalShiftLayers]);
+      for (const gesture of [tap("X"), tap("Y"), tap("Left")]) {
+        const r = resolveGesture(gesture, mkState(), [...modalShiftLayers], map);
+        expect(r?.kind, `tap(${gesture.btn})`).toBe("miss");
+      }
+    });
+
+    it("stops masking once the menu closes", () => {
+      mockedIsMainMenuOpen.mockReturnValue(false);
+      const map = buildLayerMap([...modalShiftLayers]);
+      const r = resolveGesture(tap("Y"), mkState(), [...modalShiftLayers], map);
+      expect(r?.kind).toBe("action");
+      if (r?.kind === "action") expect(r.action).toBe("edit.delete");
+    });
   });
 
   // ─── LB+RB shift layer (B6: face-button structural verbs) ─────────────────

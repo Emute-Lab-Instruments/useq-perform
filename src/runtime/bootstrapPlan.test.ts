@@ -13,7 +13,7 @@ describe("resolveBootstrapPlan", () => {
       }),
     ).toEqual({
       startupMode: "no-module",
-      startBrowserLocal: true,
+      awaitSavedPortReconnect: false,
       seedDefaultNoModuleExpressions: true,
       attemptHardwareReconnect: false,
       showUnsupportedBrowserWarning: false,
@@ -30,7 +30,7 @@ describe("resolveBootstrapPlan", () => {
       }),
     ).toEqual({
       startupMode: "unsupported-browser",
-      startBrowserLocal: false,
+      awaitSavedPortReconnect: false,
       seedDefaultNoModuleExpressions: false,
       attemptHardwareReconnect: false,
       showUnsupportedBrowserWarning: true,
@@ -47,7 +47,7 @@ describe("resolveBootstrapPlan", () => {
       }),
     ).toEqual({
       startupMode: "browser-local",
-      startBrowserLocal: true,
+      awaitSavedPortReconnect: false,
       seedDefaultNoModuleExpressions: false,
       attemptHardwareReconnect: true,
       showUnsupportedBrowserWarning: false,
@@ -64,7 +64,7 @@ describe("resolveBootstrapPlan", () => {
       }),
     ).toEqual({
       startupMode: "hardware",
-      startBrowserLocal: false,
+      awaitSavedPortReconnect: true,
       seedDefaultNoModuleExpressions: false,
       attemptHardwareReconnect: true,
       showUnsupportedBrowserWarning: false,
@@ -81,7 +81,7 @@ describe("resolveBootstrapPlan", () => {
       }),
     ).toEqual({
       startupMode: "browser-local",
-      startBrowserLocal: true,
+      awaitSavedPortReconnect: false,
       seedDefaultNoModuleExpressions: false,
       attemptHardwareReconnect: false,
       showUnsupportedBrowserWarning: false,
@@ -98,7 +98,7 @@ describe("resolveBootstrapPlan", () => {
       }),
     ).toEqual({
       startupMode: "unsupported-browser",
-      startBrowserLocal: false,
+      awaitSavedPortReconnect: false,
       seedDefaultNoModuleExpressions: false,
       attemptHardwareReconnect: false,
       showUnsupportedBrowserWarning: true,

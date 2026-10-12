@@ -123,8 +123,10 @@ export interface WorkletAudioInputWiring {
 export interface WorkletControlChannel {
   /** NodeDef param name (e.g. `"freq"`). */
   readonly param: string;
-  /** Absolute block-rate SAB channel index. */
+  /** Absolute channel index in the SAB rate family named by `rate`. */
   readonly channel: number;
+  readonly rate?: "block" | "fast" | "event";
+  readonly smoothing?: "step" | "linear" | "slew" | "latch";
 }
 
 // ---------------------------------------------------------------------------
@@ -213,11 +215,9 @@ export function classifyModuleTransfer(
  * boundary. The core fades the new instance in over
  * `SYNTH_FADE_IN_MS` (default 10 ms, VAL-ENGINE-028).
  *
- * If a previous instance is still active under the same identity, the
- * core treats this message as an update-in-place when def/version match
- * (no DSP reset; phase preserved, VAL-DSP-010 / VAL-ENGINE-014) and as
- * a retire-and-replace when def/version differ (old instance fades out,
- * new instance fades in, overlapping fades per synth-nodes.md §5.7).
+ * A delta inside prepare-graph, never a top-level worklet message. The
+ * coordinator uses update deltas for preserved instances and explicit
+ * retire + instantiate deltas for replacements.
  */
 export interface WorkletInstantiateMessage {
   readonly type: "instantiate";
@@ -255,9 +255,8 @@ export interface WorkletInstantiateMessage {
 
 /**
  * Update the parameters of an existing instance without replacing the
- * DSP instance or resetting phase (VAL-DSP-010). If no active instance
- * matches the identity, the message is a no-op (a late update from a
- * superseded eval).
+ * DSP instance or resetting phase (VAL-DSP-010). A delta inside
+ * prepare-graph; a missing live identity rejects the candidate.
  */
 export interface WorkletUpdateMessage {
   readonly type: "update";
@@ -290,10 +289,11 @@ export interface WorkletRetireMessage {
 }
 
 /**
- * Failure-atomic graph transaction. `prepare-graph` asks the worklet to
+ * The only graph mutation protocol. `prepare-graph` asks the worklet to
  * validate the complete candidate and reserve/initialise every zone without
- * changing the live graph. `commit-graph` only makes an accepted candidate
- * eligible for its matching epoch; `abort-graph` releases every reservation.
+ * changing the live graph. `commit-graph` selects the accepted candidate;
+ * `activate-graph` gates its matching-epoch swap. `abort-graph` releases its
+ * reservations before activation.
  */
 export interface WorkletPrepareGraphMessage {
   readonly type: "prepare-graph";
@@ -346,30 +346,18 @@ export interface WorkletAttachControlBufferMessage {
 }
 
 /**
- * Disconnect from the SAB and retire every active instance. Sent by
- * the service when the engine is disposed or reinitialised.
- */
-export interface WorkletDetachControlBufferMessage {
-  readonly type: "detach-control-buffer";
-}
-
-/**
  * Union of every message the worklet core accepts. Unknown shapes are
  * treated as no-ops so a forward-compatible main thread cannot crash
  * the audio thread.
  */
 export type WorkletInboundMessage =
   | WorkletModuleTransferMessage
-  | WorkletInstantiateMessage
-  | WorkletUpdateMessage
-  | WorkletRetireMessage
   | WorkletPrepareGraphMessage
   | WorkletCommitGraphMessage
   | WorkletAbortGraphMessage
   | WorkletActivateGraphMessage
   | WorkletDevmodeTerminateProducerMessage
-  | WorkletAttachControlBufferMessage
-  | WorkletDetachControlBufferMessage;
+  | WorkletAttachControlBufferMessage;
 
 // ---------------------------------------------------------------------------
 // Outbound telemetry (worklet → main thread)
@@ -444,6 +432,15 @@ export interface WorkletProducerTimeoutEvent {
   readonly atBlock: number;
   /** Liveness age that triggered the timeout (in blocks). */
   readonly livenessAge: number;
+}
+
+/** Worklet faults that require the synthesis service to enter error state. */
+export interface WorkletEngineFaultEvent {
+  readonly type: "engine-fault";
+  readonly reason: "WORKLET_TRAP" | "OVERLOAD";
+  readonly atBlock: number;
+  readonly identity?: string;
+  readonly consecutiveMisses?: number;
 }
 
 /**
@@ -526,6 +523,7 @@ export interface WorkletGraphTransactionAckEvent {
 export type WorkletOutboundEvent =
   | WorkletTelemetrySnapshot
   | WorkletProducerTimeoutEvent
+  | WorkletEngineFaultEvent
   | WorkletInstanceRetiredEvent
   | WorkletGraphActivatedEvent
   | WorkletControlAttachAckEvent

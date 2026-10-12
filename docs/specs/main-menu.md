@@ -41,7 +41,7 @@ The main menu opens on the **chord** of both stick presses simultaneously: `chor
 
 2.1.1 **Why L3+R3.** This is the standard "pause menu" gesture in console games. It's physically distinct (requires both thumbs to press inward simultaneously), impossible to trigger accidentally during normal navigation or value editing, and carries strong muscle-memory associations for gamepad users.
 
-2.1.2 **Keyboard equivalent.** `Escape` when no other sub-mode is active (i.e. Escape has nothing to cancel). If a sub-mode is active, Escape cancels that first; a second Escape with nothing to cancel opens the main menu. This is realised by binding `Escape → mainMenu.open` **unconditionally and at lower keymap precedence** than the conditional sub-mode Escape bindings (`liveEdit.vectorCancel`, `picker.cancel`), which are `Prec.high`: those run first and consume Escape while their sub-mode is active, so the menu only opens once nothing is left to cancel (`src/lib/keybindings/defaults.ts`, `src/editors/commands/actionHandlers.ts`). `Ctrl+Shift+P` is **not** used for the menu — it is already bound to `palette.open` (the action palette); the menu is not a palette, so no second opener is provided.
+2.1.2 **Keyboard equivalent.** `Escape` when no other sub-mode is active (i.e. Escape has nothing to cancel). If a sub-mode is active, Escape cancels that first; a second Escape with nothing to cancel opens the main menu. This is realised by binding `Escape → mainMenu.open` **unconditionally and at lower keymap precedence** than the active sub-mode Escape binding (`liveEdit.vectorCancel`), which is `Prec.high`: it runs first and consumes Escape while vector marking is active, so the menu opens once nothing is left to cancel (`src/lib/keybindings/defaults.ts`, `src/editors/commands/actionHandlers.ts`). The legacy picker layer was replaced by the radial menu. `Ctrl+Shift+P` is **not** used for the menu — it is already bound to `palette.open` (the action palette); the menu is not a palette, so no second opener is provided.
 
 2.1.3 **Individual stick presses retain their existing bindings.** L3 alone = polarity flip (on numbers) or `control.toggleManualLeft`; R3 alone = `control.toggleManualRight`. Only the simultaneous chord opens the menu.
 
@@ -121,7 +121,7 @@ Saving captures the full editor content (all top-level forms). Restoring replace
 
 ### 3.4 Settings submenu
 
-Each settings category presents its options as a scrollable list of labelled values. Gamepad-friendly editing:
+Planned settings categories present options as a scrollable list of labelled values. Gamepad-friendly editing:
 - Boolean settings: A to toggle
 - Numeric settings: LB/RB to adjust (reuses atom-adjust mechanics)
 - Enum settings: LB/RB to cycle through options
@@ -137,13 +137,11 @@ Each settings category presents its options as a scrollable list of labelled val
 │  ▸ Pause                    │
 ���  ▸ Stop                     │
 │  ▸ Rewind                   │
-│  ▸ BPM: 120    [LB -] [RB +]│
-│  ▸ Time Sig: 4/4            │
 │  ▸ ‹ Back                   │
 └──────────────────��──────────┘
 ```
 
-BPM and time signature are editable in-place using LB/RB to adjust.
+Transport value rows are deferred. The current menu has no adjustable items, so the adjustment actions decline the gesture until such rows are implemented.
 
 ---
 
@@ -179,7 +177,7 @@ const mainMenuLayer: Layer = {
 
 4.1.2 `mainMenu.back` navigates up one submenu level; at the top level, it closes the menu entirely (equivalent to `mainMenu.close`).
 
-4.1.3 `mainMenu.adjustDown` / `mainMenu.adjustUp` are used for inline value editing within the menu (BPM, numeric settings). On items that don't support adjustment, these are no-ops.
+4.1.3 `mainMenu.adjustDown` / `mainMenu.adjustUp` are reserved for inline value editing. The current menu has no adjustable items; the handlers return `false` so the unimplemented gesture is not consumed. Add an adjustable row and implement its value update before claiming the action is supported. Items without adjustment remain no-ops.
 
 ### 4.2 Focus model
 

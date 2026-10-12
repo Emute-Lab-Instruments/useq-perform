@@ -145,7 +145,7 @@ A form breaks when **any** of:
 
 The complexity threshold captures the user's example: `(+ 0.1 0.2 0.3 0.4)`
 has weight-1 children (all leaves) — stays on one line regardless of arg
-count. But `(+ (usin bar) (seq [1 2 3 4] (slow (from-list [3 2 4] (slow 8 bar)) bar)))`
+count. But `(+ (sin bar) (seq [1 2 3 4] (slow (from-list [3 2 4] (slow 8 bar)) bar)))`
 has a deeply nested child (weight ≥ 4) — triggers breaking.
 
 **Breadth vs depth.** The complexity model is intentionally depth-sensitive,
@@ -195,7 +195,7 @@ keep their alignment.
 
 Example (arg-aligned, floor not triggered):
 ```
-(a1 (+ (usin bar)
+(a1 (+ (sin bar)
         (seq [1 2 3 4]
              (slow (from-list [3 2 4]
                               (slow 8 bar))
@@ -210,7 +210,7 @@ The inner `(slow 8 bar)` stays on one line — it's short and simple.
 Example (floor triggered — if `from-list`'s arg-aligned column would leave
 < 20 chars available, it falls back to body indent):
 ```
-(a1 (+ (usin bar)
+(a1 (+ (sin bar)
         (seq [1 2 3 4]
              (slow (from-list [3 2 4]
                      (slow 8 bar))
@@ -226,8 +226,8 @@ width or complexity, with 2-space indent:
 (do
   (bpm 120)
   (define p (phasor 4))
-  (a1 (osc (* 440 p)))
-  (d1 (pulse p)))
+  (a1 (sin[lfo] (* 440 p)))
+  (d1 (pulse[:duty 0.5] p)))
 ```
 
 Rationale: `do` children are logically separate statements. A single-line `do`
@@ -256,8 +256,8 @@ surface syntax.
 prefixes; they add negligible width and never cause a break on their own:
 
 ```
-'(slow 4 (osc 440))      ;; formatted same as the unwrapped form
-#_(d2 (pulse bar))        ;; ignored form, same layout rules
+'(slow 4 (sin[lfo] 440))      ;; formatted same as the unwrapped form
+#_(d2 (pulse[:duty 0.5] bar)) ;; ignored form, same layout rules
 ```
 
 **Wrapper-call Metas** (`live-edit`, `debug`, `time`, user wrappers) are
@@ -332,6 +332,17 @@ Within a form, multiple consecutive blank lines are collapsed to a single
 blank line during reformatting. (Between top-level forms, they are sacred
 per §2.1.)
 
+### 4.4 Attached operator modifiers
+
+When the formatter already owns an affected form under §2, it preserves the
+attachment between an exact call-head base and its modifier block, uses one
+space between entries, and removes padding immediately inside the brackets:
+`sin[uni norm]`, `pulse[bi :duty 0.2]`, `osc/sine[raw]`. It preserves authored
+entry order and never adds, removes, or changes a modifier or qualification.
+It never runs this pass while the user types or over untouched loaded source.
+See [operator-modifier-ui.md](operator-modifier-ui.md) §4 and
+[operator-modifiers.md](../../src-useq/docs/specs/operator-modifiers.md) §2.
+
 ---
 
 ## 5. Settings
@@ -349,7 +360,7 @@ preference. It produces:
 
 ```
 (a1
-  (+ (usin bar)
+  (+ (sin bar)
     (seq [1 2 3 4]
       (slow
         (from-list [3 2 4]
@@ -361,9 +372,9 @@ preference. It produces:
 
 ## 6. Interaction with Other Systems
 
-6.1 **Eval.** Formatting is purely visual. The evaluator receives the full
-source text as-is; formatting changes are whitespace-only and have no effect
-on evaluation semantics.
+6.1 **Eval.** Formatting preserves evaluation semantics. Its treatment of
+attached modifier blocks in §4.4 changes whitespace only and preserves entry
+order, exact qualification, and visible modifier content.
 
 6.2 **Visualisation/probes.** Probe positions are tracked by node identity,
 not character offset. Reformatting does not displace probes.

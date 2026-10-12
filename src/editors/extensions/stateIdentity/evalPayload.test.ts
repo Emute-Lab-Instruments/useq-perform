@@ -18,9 +18,8 @@
  */
 
 import { describe, expect, it } from "vitest";
-import { EditorState } from "@codemirror/state";
 import { EditorView } from "@codemirror/view";
-// @ts-expect-error — clojure-mode has no type declarations
+
 import { default_extensions as clojureExtensions } from "@nextjournal/clojure-mode";
 
 import {
@@ -38,7 +37,7 @@ import {
   type EvalPayloadSource,
   type ManualControlBinding,
 } from "./evalPayload.ts";
-import type { UseqDiagnostic } from "../../contracts/runtimeTypes.ts";
+import type { UseqDiagnostic } from "../../../contracts/runtimeTypes.ts";
 
 // ─── Harness ───────────────────────────────────────────────────────────────
 

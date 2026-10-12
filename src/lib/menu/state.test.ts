@@ -217,6 +217,12 @@ describe("reduce: closed", () => {
     });
   });
 
+  it("open carries before/after insertion side into the reducer state", () => {
+    const manifest = makeManifest();
+    const after = reduce(closed, { kind: "open", target: TARGET, manifest, side: "after" });
+    expect(after).toMatchObject({ phase: "open", target: TARGET, side: "after" });
+  });
+
   it("cancel → unchanged (still closed)", () => {
     expect(reduce(closed, { kind: "cancel" })).toBe(closed);
   });

@@ -3,7 +3,6 @@ import { describe, expect, it } from "vitest";
 import {
   visualisationSessionChannel,
   serialVisPaletteChangedChannel,
-  serialVisAutoOpenChannel,
 } from "./visualisationChannels";
 
 describe("visualisationChannels", () => {
@@ -15,9 +14,6 @@ describe("visualisationChannels", () => {
     });
     const unsubPalette = serialVisPaletteChangedChannel.subscribe((detail) => {
       events.push({ channel: "palette", detail });
-    });
-    const unsubAutoOpen = serialVisAutoOpenChannel.subscribe((detail) => {
-      events.push({ channel: "autoOpen", detail });
     });
 
     visualisationSessionChannel.publish({
@@ -35,7 +31,6 @@ describe("visualisationChannels", () => {
     serialVisPaletteChangedChannel.publish({
       palette: ["#111111", "#222222"],
     });
-    serialVisAutoOpenChannel.publish(undefined);
 
     expect(events).toEqual([
       {
@@ -46,18 +41,13 @@ describe("visualisationChannels", () => {
         channel: "palette",
         detail: { palette: ["#111111", "#222222"] },
       },
-      {
-        channel: "autoOpen",
-        detail: undefined,
-      },
     ]);
 
     // Verify unsubscribe works
     unsubSession();
     unsubPalette();
-    unsubAutoOpen();
 
     visualisationSessionChannel.publish({ kind: "after-unsub" });
-    expect(events).toHaveLength(3); // no new events
+    expect(events).toHaveLength(2); // no new events
   });
 });

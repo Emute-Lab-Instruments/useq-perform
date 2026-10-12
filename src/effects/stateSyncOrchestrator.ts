@@ -26,6 +26,7 @@ import {
   stopEvalCooldownListener,
 } from "./driftDetector";
 import { invalidateFutureProjections } from "./visualisationSampler";
+import { getRuntimeServiceSnapshot } from "../runtime/runtimeService";
 
 // ── State ───────────────────────────────────────────────────────────
 
@@ -105,6 +106,18 @@ export function initStateSyncOrchestrator(
       stopEvalCooldownListener();
     }
   });
+
+  // Channels are deliberately non-replaying. Seed the detector from the
+  // current runtime snapshot so late startup/recovery in `both` mode is live
+  // immediately, without waiting for an unrelated connection transition.
+  const { session } = getRuntimeServiceSnapshot();
+  if (session.transportMode === "both") {
+    enableDriftDetection();
+    startEvalCooldownListener();
+  } else {
+    disableDriftDetection();
+    stopEvalCooldownListener();
+  }
 }
 
 export function teardownStateSyncOrchestrator(): void {

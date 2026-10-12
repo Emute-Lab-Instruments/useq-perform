@@ -46,7 +46,6 @@ const hydraSlurp: Layer = {
     [keyOf(tap("Left"))]: "edit.slurpBack",
     [keyOf(tap("Up"))]: "edit.barfBack",
     [keyOf(tap("Down"))]: "edit.barfFwd",
-    [keyOf(tap("B"))]: "picker.cancel",
   },
 };
 

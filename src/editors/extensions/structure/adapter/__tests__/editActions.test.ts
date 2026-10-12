@@ -10,12 +10,11 @@
 import { describe, expect, it } from "vitest";
 import { EditorState } from "@codemirror/state";
 import { EditorView } from "@codemirror/view";
-// @ts-expect-error — clojure-mode has no type declarations
+
 import { default_extensions } from "@nextjournal/clojure-mode";
 
 import { structuralCoreExtensions } from "../extension.ts";
 import { dispatchAction } from "../dispatcher.ts";
-import { structField } from "../stateField.ts";
 
 function createView(doc: string): EditorView {
   const ext = structuralCoreExtensions();
@@ -40,6 +39,21 @@ function navIntoFirstForm(view: EditorView): void {
 }
 
 describe("edit.* actions wired through functional core", () => {
+  it("dispatches atom slurp forward and backward through the adapter", () => {
+    const forward = createView("a b");
+    dispatchAction(forward, "nav.in");
+    expect(dispatchAction(forward, "edit.atomSlurpForward")).toBe(true);
+    expect(forward.state.doc.toString()).toBe("[a b]");
+    forward.destroy();
+
+    const backward = createView("a b");
+    dispatchAction(backward, "nav.in");
+    dispatchAction(backward, "nav.next");
+    expect(dispatchAction(backward, "edit.atomSlurpBackward")).toBe(true);
+    expect(backward.state.doc.toString()).toBe("[a b]");
+    backward.destroy();
+  });
+
   // ─── Slurp ───────────────────────────────────────���────────────────────────
 
   describe("slurp", () => {

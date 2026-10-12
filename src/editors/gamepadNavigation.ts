@@ -9,6 +9,7 @@
 // pipeline (see `src/lib/gamepad/index.ts` → `createActionRunner`). This
 // module covers the remaining channel-driven manual-control stick axis.
 
+import { isGrabActive } from "./grabSession.ts";
 import type { EditorView } from "@codemirror/view";
 
 import { executeEditorCommand } from "./commands/editorCommandRouter.ts";
@@ -61,23 +62,25 @@ export interface GamepadNavigationHandle {
 export function readGamepadEditorContext(
   view: EditorView,
 ): GamepadEditorContext {
+  const grabActive = isGrabActive(view.state);
   const insertionMode = view.state.field(insertionModeField, false) ?? false;
   const structural = view.state.field(structField, false);
   if (!structural) {
-    return { insertionMode, cursorOnLeafAtom: false, cursorNodeKind: null };
+    return { grabActive, insertionMode, cursorOnLeafAtom: false, cursorNodeKind: null };
   }
 
   const primary = structural.state.cursors.primary;
   if (primary.kind !== "node") {
-    return { insertionMode, cursorOnLeafAtom: false, cursorNodeKind: null };
+    return { grabActive, insertionMode, cursorOnLeafAtom: false, cursorNodeKind: null };
   }
 
   const node = findById(structural.state.tree.root, primary.target);
   if (!node || !isLeaf(node) || node.kind === "document") {
-    return { insertionMode, cursorOnLeafAtom: false, cursorNodeKind: null };
+    return { grabActive, insertionMode, cursorOnLeafAtom: false, cursorNodeKind: null };
   }
 
   return {
+    grabActive,
     insertionMode,
     cursorOnLeafAtom: true,
     cursorNodeKind: node.kind as LeafKind,

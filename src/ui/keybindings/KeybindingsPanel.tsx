@@ -16,7 +16,10 @@ import {
 } from "solid-js";
 
 import { settings, requestSettingsUpdate } from "../../utils/settingsStore";
-import { resolver } from "../../editors/keymaps";
+import {
+  resolver,
+  refreshKeymapExtensions,
+} from "../../editors/keymaps";
 import {
   actions,
   getAction,
@@ -178,6 +181,7 @@ export const KeybindingsPanel: Component = () => {
 
     if (result.status === "ok") {
       persistOverrides();
+      refreshKeymapExtensions();
       setVersion((v) => v + 1);
       stopListening();
     } else if (result.status === "blocked") {
@@ -231,6 +235,7 @@ export const KeybindingsPanel: Component = () => {
       const rebindResult = resolver.rebind(c.actionId, c.newKey);
       if (rebindResult.status === "ok") {
         persistOverrides();
+        refreshKeymapExtensions();
         setVersion((v) => v + 1);
       }
     }
@@ -289,6 +294,7 @@ export const KeybindingsPanel: Component = () => {
       },
     });
 
+    refreshKeymapExtensions();
     setVersion((v) => v + 1);
     setConflict(null);
     setListeningAction(null);
@@ -369,11 +375,6 @@ const KeybindingRow: Component<{
   const displayKey = () =>
     props.formatKey(props.binding.key, props.osFamily);
 
-  const displacedAction = () => {
-    if (!props.conflict) return null;
-    return getAction(props.conflict.displaced);
-  };
-
   return (
     <div class="kb-row-wrapper">
       <div class="panel-row">
@@ -394,8 +395,9 @@ const KeybindingRow: Component<{
                 class="kb-edit-btn"
                 onClick={props.onCancel}
                 title="Cancel"
+                aria-label="Cancel"
               >
-                &#x2715;
+                <span aria-hidden="true">&#x2715;</span>
               </button>
             }
           >
@@ -403,8 +405,9 @@ const KeybindingRow: Component<{
               class="kb-edit-btn"
               onClick={props.onEdit}
               title="Rebind this shortcut"
+              aria-label="Rebind this shortcut"
             >
-              &#x270E;
+              <span aria-hidden="true">&#x270E;</span>
             </button>
           </Show>
         </div>

@@ -1,0 +1,23 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "types": [
+      "node",
+      "vitest/globals"
+    ],
+    "moduleResolution": "bundler"
+  },
+  "include": [
+    "src/**/*.test.ts",
+    "src/**/*.test.tsx",
+    "src/**/*.testkit.ts",
+    "vitest.shims.d.ts",
+    "vitest.jest-dom.setup.ts",
+    "src/**/*.d.ts"
+  ],
+  "exclude": [
+    "node_modules",
+    "public",
+    "src/editors/extensions/__tests__/structure-pure.test.ts"
+  ]
+}

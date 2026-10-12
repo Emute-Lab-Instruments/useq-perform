@@ -74,6 +74,28 @@ export interface BindingResolver {
 
   /** Generate CodeMirror keymap Extension array from resolved bindings. */
   toKeymapExtensions(): Extension[];
+
+  /**
+   * All currently-active keyboard bindings, including chord alternatives
+   * (the `resolved()` map only keeps the primary binding per action). This is
+   * the read-side source of truth for UI surfaces (keybindings.md §2: which-key
+   * hints, visualiser, palette show the active resolved bindings).
+   */
+  resolvedAll(): ResolvedBinding[];
+
+  /**
+   * Run the conditional binding on `key` whose when-clause is currently
+   * active, if any (keybindings.md §1.7). Usage recording and announcement
+   * fire exactly as they would from a keymap-triggered run.
+   *
+   * Returns the handler's result, or `false` when no active conditional
+   * binding claims the key (the caller should fall through). Used by the
+   * policy-key dispatcher in `src/editors/keymaps.ts` so a registry binding
+   * scoped to an active sub-mode — Enter → `liveEdit.vectorConfirm` under
+   * `vectorMark.active` (live-edit.md §3.7.3/§3.7.8) — is not shadowed by the
+   * Prec.highest policy-key route.
+   */
+  runActiveConditionalBinding(key: string, view: EditorView): boolean;
 }
 
 // ---------------------------------------------------------------------------
@@ -261,6 +283,14 @@ export function createResolver(opts?: {
     }));
   }
 
+  function runHandler(handler: ActionHandler, action: ActionId, view: EditorView): boolean {
+    recordAction(action);
+    announceAction(action);
+    return handler.length > 0
+      ? (handler as (v: EditorView) => boolean)(view)
+      : (handler as () => boolean)();
+  }
+
   // Cache conflicts — recompute when bindings change
   let cachedConflicts: ConflictInfo[] | null = null;
   function getConflicts(): ConflictInfo[] {
@@ -278,6 +308,20 @@ export function createResolver(opts?: {
 
   const resolver: BindingResolver = {
     resolved: resolve,
+
+    resolvedAll: resolveAll,
+
+    runActiveConditionalBinding(key: string, view: EditorView): boolean {
+      for (const rb of resolveAll()) {
+        if (rb.key !== key || rb.when === undefined) continue;
+        const handler = rb.handler;
+        if (!handler) continue;
+        if (getAction(rb.action).analogOnly) continue;
+        if (!evaluateWhen(rb.when)) continue;
+        return runHandler(handler, rb.action, view);
+      }
+      return false;
+    },
 
     conflictsFor(key: string): ConflictInfo | null {
       return getConflicts().find((c) => c.key === key) ?? null;
@@ -382,7 +426,8 @@ export function createResolver(opts?: {
       const unconditionalCM: CMKeyBinding[] = [];
 
       for (const rb of allBindings) {
-        if (!rb.handler) continue;
+        const handler = rb.handler;
+        if (!handler) continue;
 
         // Skip analogOnly actions — they cannot be keyboard-triggered
         if (getAction(rb.action).analogOnly) continue;
@@ -390,16 +435,9 @@ export function createResolver(opts?: {
         // Wrap the handler to record usage before delegating.
         // Handlers may be EditorHandler (takes view) or VoidHandler (no args).
         // Use .length to discriminate at runtime.
-        const originalHandler = rb.handler;
-        const actionId = rb.action;
         const when = rb.when;
-        const invoke = (view: any) => {
-          recordAction(actionId);
-          announceAction(actionId);
-          return originalHandler.length > 0
-            ? (originalHandler as (v: any) => boolean)(view)
-            : (originalHandler as () => boolean)();
-        };
+        const actionId = rb.action;
+        const invoke = (view: EditorView) => runHandler(handler, actionId, view);
 
         if (when !== undefined) {
           // Context-sensitive binding (keybindings.md §1.7/§1.9,

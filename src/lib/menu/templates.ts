@@ -11,7 +11,7 @@
 //                        from the structural HoleType union.
 //
 // Bead: useq-perform-4zt.69.15. Spec: docs/specs/radial-menu.md §11.1, §8.4.
-// Consumed by `src/lib/menu/verbs.ts` (separate task) which lifts the parsed
+// Consumed by `src/editors/menu/verbs.ts` (separate task) which lifts the parsed
 // fragment into a structural-editing `Tree` fragment.
 //
 // Pure: no DOM, no IO, no globals. Errors accumulate (multiple bad atoms in

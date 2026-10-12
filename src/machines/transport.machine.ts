@@ -15,6 +15,7 @@ export type TransportEvent =
   | { type: "STOP" }
   | { type: "REWIND" }
   | { type: "CLEAR" }
+  | { type: "AUTO_START_BROWSER_LOCAL" }
   | { type: "SYNC"; state: TransportState }
   | { type: "UPDATE_MODE"; mode: TransportContext["mode"] };
 
@@ -57,6 +58,11 @@ export const transportMachine = createMachine(
       },
       CLEAR: {
         actions: "emitClear",
+      },
+      // Startup auto-run sends play while preserving the documented paused
+      // transport state, so the first user STOP remains an effective transition.
+      AUTO_START_BROWSER_LOCAL: {
+        actions: "autoStartBrowserLocal",
       },
     },
     states: {
@@ -112,6 +118,7 @@ export const transportMachine = createMachine(
       emitStop: () => {},
       emitRewind: () => {},
       emitClear: () => {},
+      autoStartBrowserLocal: () => {},
       syncWasmPlay: () => {},
       syncWasmPause: () => {},
       syncWasmStop: () => {},

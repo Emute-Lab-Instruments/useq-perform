@@ -339,6 +339,14 @@ export interface NodeDefAdapter {
     frameCount: number,
   ): boolean;
 
+  /** Generic descriptor-driven compute for NodeDefs with arbitrary params. */
+  computeWithParams?(
+    statePtr: number,
+    params: readonly { readonly name: string; readonly value: number }[],
+    outputPtr: number,
+    frameCount: number,
+  ): boolean;
+
   /** Read back the per-instance phase. Used by conformance tests only. */
   getPhase(statePtr: number): number;
 

@@ -7,8 +7,6 @@ import {
   replaceAppSettings as _replaceAppSettings,
   updateAppSettings as _updateAppSettings,
   resetAppSettings as _resetAppSettings,
-  loadAppSettings as _loadAppSettings,
-  deletePersistedSettings as _deletePersistedSettings,
 } from "./appSettingsRepository";
 import { configureInstalledBrowserWasmRuntime } from "./browserWasmRuntime.ts";
 
@@ -58,22 +56,6 @@ export function resetSettings(section?: keyof AppSettings): AppSettings {
   syncRuntimeSettings(result);
   settingsChangedChannel.publish(result);
   return result;
-}
-
-/**
- * Reload settings from persistence.
- */
-export function loadSettings(): AppSettings {
-  const result = _loadAppSettings();
-  settingsChangedChannel.publish(result);
-  return result;
-}
-
-/**
- * Delete all persisted settings.
- */
-export function deletePersistedSettings(): void {
-  _deletePersistedSettings();
 }
 
 /**

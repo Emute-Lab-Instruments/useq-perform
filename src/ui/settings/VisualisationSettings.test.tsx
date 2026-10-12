@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, within } from "@solidjs/testing-library";
+import { fireEvent, render, screen } from "@solidjs/testing-library";
 import { afterAll, beforeEach, describe, expect, it, vi } from "vitest";
 
 const { requestSettingsUpdate } = vi.hoisted(() => ({

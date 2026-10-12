@@ -20,6 +20,9 @@
 
 import { indentRange } from "@codemirror/language";
 import type { EditorView } from "@codemirror/view";
+import type { EditorState, ChangeSet } from "@codemirror/state";
+import { setIntendedFocus, structField } from "./stateField.ts";
+import { captureStructuralFocus } from "./cursorPath.ts";
 
 const MAX_ITERATIONS = 16;
 
@@ -30,24 +33,31 @@ const MAX_ITERATIONS = 16;
  * `from` / `to` are mapped forward through each iteration's changes, so the
  * range stays anchored to the same content even as line lengths shift.
  */
-export function indentRangeToFixedPoint(
-  view: EditorView,
-  from: number,
-  to: number,
-): boolean {
-  let dispatched = false;
+export function planIndentation(state: EditorState, from: number, to: number): ChangeSet {
+  let combined = state.changes([]);
+  let draft = state;
   let lo = from;
   let hi = to;
   for (let i = 0; i < MAX_ITERATIONS; i++) {
-    const changes = indentRange(view.state, lo, hi);
-    if (changes.empty) return dispatched;
-    view.dispatch({
-      changes,
-      userEvent: "format.indentFixedPoint",
-    });
+    const changes = indentRange(draft, lo, hi);
+    if (changes.empty) break;
+    combined = combined.compose(changes);
+    draft = draft.update({ changes, filter: false }).state;
     lo = changes.mapPos(lo, -1);
     hi = changes.mapPos(hi, 1);
-    dispatched = true;
   }
-  return dispatched;
+  return combined;
+}
+
+export function indentRangeToFixedPoint(view: EditorView, from: number, to: number): boolean {
+  const changes = planIndentation(view.state, from, to);
+  if (changes.empty) return false;
+  const structural = view.state.field(structField, false);
+  view.dispatch({
+    changes,
+    filter: false,
+    effects: structural ? setIntendedFocus.of(captureStructuralFocus(structural.state)) : [],
+    userEvent: "format.indentFixedPoint",
+  });
+  return true;
 }

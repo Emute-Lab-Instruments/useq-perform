@@ -309,42 +309,59 @@ export const STREAM_NAME_TO_HW_INPUT: Record<string, number> = {
   ssin2: 9,   // ain2 → INP_AI2
 };
 
+// ── Stream wire-channel numbering ────────────────────────────────────
+//
+// The firmware numbers the STREAM frame channel byte by subscription
+// order, not by the hello-config index (serial_protocol.h):
+//   wire channel 1 = time (always stream slot 0)
+//   wire channels 2+ = the `stream-config` entries in request order
+// `buildDefaultStreamConfig` subscribes inputs first, then non-time
+// outputs in hello order, so entry j of the request streams on wire
+// channel j + 2. Both routing builders below mirror exactly that
+// numbering so the parser can map an incoming frame to its destination.
+
 /**
- * Build a mapping from firmware stream channel wire-ID → WASM hw_input index.
+ * Build a mapping from firmware stream wire-channel → WASM hw_input index.
  * Only maps input channels that have a known WASM hw_input index.
  */
 export function buildInputChannelRouting(
   ioConfig: IoConfig | null | undefined
 ): Record<number, number> {
   const routing: Record<number, number> = {};
+  let wireChannel = 2;
   for (const input of ioConfig?.inputs ?? []) {
     const hwIndex = STREAM_NAME_TO_HW_INPUT[input.name];
     if (hwIndex !== undefined) {
-      routing[input.index] = hwIndex;
+      routing[wireChannel] = hwIndex;
     }
+    wireChannel += 1;
   }
   return routing;
 }
 
+/**
+ * Build a mapping from firmware stream wire-channel → serialBuffers[] index.
+ *
+ * Buffer layout: index 0 = time, index N = sN (driftDetector
+ * `outputNameToBufferIndex` reads sN from serialBuffers[N]). Unrecognised
+ * output names still consume a wire channel — the firmware allocates a
+ * stream slot for every enabled entry, mapped or not.
+ */
 export function buildSerialOutputRouting(ioConfig: IoConfig | null | undefined): Record<number, number> {
   const routing: Record<number, number> = {};
 
-  for (const output of ioConfig?.outputs ?? []) {
-    if (!Number.isInteger(output.index) || output.index < 1) {
-      continue;
-    }
+  // Wire channel 1 carries time (firmware streams it unconditionally).
+  routing[1] = 0;
 
-    if (output.name === SERIAL_OUTPUT_TIME_NAME) {
-      routing[output.index] = 0;
-      continue;
-    }
+  let wireChannel = 2 + (ioConfig?.inputs?.length ?? 0);
+  for (const output of ioConfig?.outputs ?? []) {
+    if (output.name === SERIAL_OUTPUT_TIME_NAME) continue;
 
     const match = /^s([1-9]\d*)$/.exec(output.name);
-    if (!match) {
-      continue;
+    if (match) {
+      routing[wireChannel] = Number.parseInt(match[1], 10);
     }
-
-    routing[output.index] = Number.parseInt(match[1], 10);
+    wireChannel += 1;
   }
 
   return routing;
